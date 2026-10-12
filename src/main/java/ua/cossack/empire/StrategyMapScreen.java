@@ -6,9 +6,11 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 public class StrategyMapScreen extends Screen {
-    private static final int TOP = 30;
-    private static final int BOTTOM_PANEL = 70;
-    private static final int MARGIN = 20;
+    private static final int COLS = 4;
+    private static final int ROWS = 3;
+    private static final int TOP = 44;
+    private static final int BOTTOM = 34;
+    private static final int MARGIN = 12;
 
     private int selected = -1;
 
@@ -19,19 +21,26 @@ public class StrategyMapScreen extends Screen {
     @Override
     protected void init() {
         addDrawableChild(ButtonWidget.builder(Text.literal("Наступний хід"), b -> GameState.nextTurn())
-                .dimensions(this.width - 130, this.height - 50, 110, 20)
+                .dimensions(this.width - 126, this.height - 28, 114, 20)
+                .build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Нова гра"), b -> {
+                    GameState.newGame();
+                    selected = -1;
+                })
+                .dimensions(this.width - 246, this.height - 28, 114, 20)
                 .build());
     }
 
-    private int cellW() { return (this.width - MARGIN * 2) / GameState.COLS; }
-    private int cellH() { return (this.height - TOP - BOTTOM_PANEL) / GameState.ROWS; }
+    private int gridW() { return (int) ((this.width - MARGIN * 2) * 0.55); }
+    private int cellW() { return gridW() / COLS; }
+    private int cellH() { return (this.height - TOP - BOTTOM) / ROWS; }
 
     private int cellAt(double mx, double my) {
+        if (mx < MARGIN || my < TOP) return -1;
         int cx = (int) ((mx - MARGIN) / cellW());
         int cy = (int) ((my - TOP) / cellH());
-        if (mx < MARGIN || my < TOP) return -1;
-        if (cx < 0 || cx >= GameState.COLS || cy < 0 || cy >= GameState.ROWS) return -1;
-        return cy * GameState.COLS + cx;
+        if (cx >= COLS || cy >= ROWS) return -1;
+        return cy * COLS + cx;
     }
 
     @Override
@@ -46,48 +55,65 @@ public class StrategyMapScreen extends Screen {
         return super.mouseClicked(mx, my, button);
     }
 
-    @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
+    private String res(World.ResourceType r) {
+        return r.label + " " + GameState.stock.get(r) + " (+" + GameState.income(r) + ")";
+    }
 
-        String top = "Хід " + GameState.turn
-                + "   Золото: " + GameState.gold + " (+" + GameState.incomeGold() + ")"
-                + "   Їжа: " + GameState.food + " (+" + GameState.incomeFood() + ")"
-                + "   Дерево: " + GameState.wood + " (+" + GameState.incomeWood() + ")";
-        context.drawCenteredTextWithShadow(textRenderer, Text.literal(top), this.width / 2, 10, 0xFFD700);
+    @Override
+    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        super.render(ctx, mouseX, mouseY, delta);
+
+        String line1 = "Хід " + GameState.turn + "   " + res(World.ResourceType.GOLD)
+                + "   " + res(World.ResourceType.FOOD) + "   " + res(World.ResourceType.WOOD);
+        String line2 = res(World.ResourceType.IRON) + "   " + res(World.ResourceType.POWDER)
+                + "   " + res(World.ResourceType.HORSES);
+        ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(line1), this.width / 2, 6, 0xFFD700);
+        ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(line2), this.width / 2, 20, 0xFFD700);
 
         int w = cellW();
         int h = cellH();
         int hovered = cellAt(mouseX, mouseY);
+        World.Province[] provinces = GameState.world.provinces;
 
-        for (int i = 0; i < GameState.PROVINCES.length; i++) {
-            GameState.Province p = GameState.PROVINCES[i];
-            int x = MARGIN + (i % GameState.COLS) * w;
-            int y = TOP + (i / GameState.COLS) * h;
+        for (int i = 0; i < provinces.length; i++) {
+            World.Province pr = provinces[i];
+            int x = MARGIN + (i % COLS) * w;
+            int y = TOP + (i / COLS) * h;
 
-            context.fill(x + 2, y + 2, x + w - 2, y + h - 2, GameState.OWNER_COLORS[p.owner()]);
+            ctx.fill(x + 2, y + 2, x + w - 2, y + h - 2, World.FACTIONS[pr.owner].color());
             if (i == hovered) {
-                context.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0x40FFFFFF);
+                ctx.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0x40FFFFFF);
             }
             if (i == selected) {
-                context.drawBorder(x + 2, y + 2, w - 4, h - 4, 0xFFFFFFFF);
+                ctx.drawBorder(x + 2, y + 2, w - 4, h - 4, 0xFFFFFFFF);
             }
-            context.drawCenteredTextWithShadow(textRenderer, Text.literal(p.name()),
+            ctx.drawCenteredTextWithShadow(textRenderer,
+                    Text.literal(textRenderer.trimToWidth(pr.name, w - 4)),
                     x + w / 2, y + h / 2 - 4, 0xFFFFFF);
         }
 
-        int py = this.height - BOTTOM_PANEL + 10;
+        int px = MARGIN + w * COLS + 12;
+        int pw = this.width - px - MARGIN;
         if (selected >= 0) {
-            GameState.Province p = GameState.PROVINCES[selected];
-            context.drawTextWithShadow(textRenderer,
-                    Text.literal(p.name() + " — " + GameState.OWNERS[p.owner()]), MARGIN, py, 0xFFD700);
-            context.drawTextWithShadow(textRenderer,
-                    Text.literal("Дохід за хід: золото " + p.gold() + ", їжа " + p.food() + ", дерево " + p.wood()),
-                    MARGIN, py + 14, 0xFFFFFF);
+            World.Province pr = provinces[selected];
+            ctx.drawTextWithShadow(textRenderer,
+                    Text.literal(textRenderer.trimToWidth(pr.name + " — " + World.FACTIONS[pr.owner].name(), pw)),
+                    px, TOP, 0xFFD700);
+            int y = TOP + 16;
+            for (World.Point p : pr.points) {
+                String s = p.type.label + " " + p.name + "  +" + p.output + " "
+                        + p.type.resource.label + (p.unrest >= 20 ? " !" : "");
+                ctx.drawTextWithShadow(textRenderer,
+                        Text.literal(textRenderer.trimToWidth(s, pw)),
+                        px, y, p.unrest >= 20 ? 0xFF5555 : 0xFFFFFF);
+                y += 12;
+            }
         } else {
-            context.drawTextWithShadow(textRenderer,
-                    Text.literal("Натисни на провінцію"), MARGIN, py, 0xFFFFFF);
+            ctx.drawTextWithShadow(textRenderer, Text.literal("Натисни на провінцію"), px, TOP, 0xFFFFFF);
         }
+
+        ctx.drawTextWithShadow(textRenderer,
+                Text.literal("Зерно: " + GameState.world.seed), MARGIN, this.height - 22, 0xAAAAAA);
     }
 
     @Override
