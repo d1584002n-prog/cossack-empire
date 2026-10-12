@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "cossackempire",
+  "version": "0.1.0",
+  "name": "Козацька імперія",
+  "description": "Стратегія про козацьку державу",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.cossackempire.CossackEmpire"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
