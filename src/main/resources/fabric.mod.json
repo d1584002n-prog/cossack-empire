@@ -1,15 +1,16 @@
 {
   "schemaVersion": 1,
-  "id": "cossackempire",
-  "version": "0.1.0",
+  "id": "cossack_empire",
+  "version": "${version}",
   "name": "Козацька імперія",
-  "description": "Стратегія про козацьку державу",
-  "environment": "*",
+  "description": "Стратегія в Minecraft: карта провінцій, ресурси, полки, туман війни.",
+  "authors": [],
+  "environment": "client",
   "entrypoints": {
-    "main": ["com.cossackempire.CossackEmpire"]
+    "client": ["ua.cossack.empire.CossackEmpireClient"]
   },
   "depends": {
-    "fabricloader": ">=0.16.9",
+    "fabricloader": ">=0.16.10",
     "minecraft": "~1.21.4",
     "java": ">=21",
     "fabric-api": "*"
