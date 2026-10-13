@@ -108,7 +108,10 @@ public final class World {
             for (int j = 0; j < count; j++) {
                 PointType t = j == 0 ? PointType.TOWN : types[1 + rnd.nextInt(types.length - 1)];
                 String[] pool = NAMES[t.ordinal()];
-                String name = pool[rnd.nextInt(pool.length)];
+                String name;
+                do {
+                    name = pool[rnd.nextInt(pool.length)];
+                } while (usedName(pr, name));
                 int out = t == PointType.TOWN ? 6 + rnd.nextInt(10) : 2 + rnd.nextInt(7);
                 Point p = new Point(name, t, out, owners[i]);
                 p.unrest = rnd.nextInt(30);
@@ -116,5 +119,12 @@ public final class World {
             }
             provinces[i] = pr;
         }
+    }
+
+    private static boolean usedName(Province pr, String name) {
+        for (Point p : pr.points) {
+            if (p.name.equals(name)) return true;
+        }
+        return false;
     }
 }
