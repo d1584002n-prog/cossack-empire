@@ -63,12 +63,15 @@ public class ArmyScreen extends Screen {
 
         ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("Армія"), this.width / 2, 10, 0xFFD700);
         ctx.drawCenteredTextWithShadow(textRenderer,
-                Text.literal("Загальна сила: " + GameState.armyPower()), this.width / 2, 26, 0xFFFFFF);
+                Text.literal("Сила: " + GameState.armyPower() + "   Утримання за хід: Їжа "
+                        + GameState.upkeepFood() + ", Золото " + GameState.upkeepGold()),
+                this.width / 2, 26, 0xFFFFFF);
         ctx.drawCenteredTextWithShadow(textRenderer,
                 Text.literal("Полонені: " + GameState.prisoners + "   (викуп: +" + GameState.prisoners * 10 + " золота)"),
                 this.width / 2, 138, 0xFFD700);
-        if (!GameState.log.isEmpty()) {
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(GameState.log),
+        String last = GameState.logLine(0);
+        if (!last.isEmpty()) {
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(last),
                     this.width / 2, 186, 0xFFFFFF);
         }
     }
