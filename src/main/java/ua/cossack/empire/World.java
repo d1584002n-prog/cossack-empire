@@ -132,7 +132,7 @@ public final class World {
         }
 
         double[] weight = new double[STATES];
-        weight[0] = 1.0;
+        weight[0] = 2.0;
         for (int f = 1; f < STATES; f++) weight[f] = 0.8 + rnd.nextDouble() * 0.6;
 
         provinces = new Province[COLS * ROWS];
