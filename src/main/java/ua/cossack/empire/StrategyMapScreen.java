@@ -17,6 +17,7 @@ public class StrategyMapScreen extends Screen {
     private int selectedPoint = -1;
     private ButtonWidget upgradeBtn;
     private ButtonWidget spyBtn;
+    private ButtonWidget attackBtn;
 
     public StrategyMapScreen() {
         super(Text.literal("Козацька Держава"));
@@ -34,6 +35,7 @@ public class StrategyMapScreen extends Screen {
                 })
                 .dimensions(this.width - 246, this.height - 28, 114, 20)
                 .build());
+
         upgradeBtn = ButtonWidget.builder(Text.literal("Покращити"), b -> {
                     World.Point p = currentPoint();
                     if (p != null) GameState.upgrade(p);
@@ -41,12 +43,27 @@ public class StrategyMapScreen extends Screen {
                 .dimensions(px(), this.height - 54, 114, 20)
                 .build();
         addDrawableChild(upgradeBtn);
+
         spyBtn = ButtonWidget.builder(Text.literal("Надіслати шпигуна"), b -> {
                     if (selected >= 0) GameState.sendSpy(GameState.world.provinces[selected]);
                 })
                 .dimensions(px(), this.height - 54, 114, 20)
                 .build();
         addDrawableChild(spyBtn);
+
+        attackBtn = ButtonWidget.builder(Text.literal("Атакувати"), b -> {
+                    World.Point p = currentPoint();
+                    if (p != null && selected >= 0) {
+                        GameState.attack(GameState.world.provinces[selected], p);
+                    }
+                })
+                .dimensions(px(), this.height - 54, 114, 20)
+                .build();
+        addDrawableChild(attackBtn);
+
+        addDrawableChild(ButtonWidget.builder(Text.literal("Армія"), b -> this.client.setScreen(new ArmyScreen(this)))
+                .dimensions(px() + 118, this.height - 54, 70, 20)
+                .build());
     }
 
     private float radius() {
@@ -133,15 +150,20 @@ public class StrategyMapScreen extends Screen {
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         World.Province[] provinces = GameState.world.provinces;
-        boolean hiddenSel = selected >= 0 && !provinces[selected].explored;
-        World.Point sp = currentPoint();
+        World.Province selProv = selected >= 0 ? provinces[selected] : null;
+        boolean hiddenSel = selProv != null && !selProv.explored;
+        World.Point sp = hiddenSel ? null : currentPoint();
+        boolean mine = sp != null && sp.owner == 0;
+        boolean enemy = sp != null && sp.owner != 0;
 
-        upgradeBtn.visible = !hiddenSel;
+        upgradeBtn.visible = mine;
+        attackBtn.visible = enemy;
         spyBtn.visible = hiddenSel;
-        upgradeBtn.active = sp != null && GameState.canUpgrade(sp);
-        spyBtn.active = hiddenSel && GameState.canSpy(provinces[selected]);
+        upgradeBtn.active = mine && GameState.canUpgrade(sp);
+        attackBtn.active = enemy && GameState.canAttack(selProv, sp);
+        spyBtn.active = hiddenSel && GameState.canSpy(selProv);
         upgradeBtn.setMessage(Text.literal(
-                sp != null && sp.level < GameState.MAX_LEVEL ? "Покращити до ур." + (sp.level + 1) : "Покращити"));
+                mine && sp.level < GameState.MAX_LEVEL ? "Покращити до ур." + (sp.level + 1) : "Покращити"));
 
         super.render(ctx, mouseX, mouseY, delta);
 
@@ -179,38 +201,48 @@ public class StrategyMapScreen extends Screen {
         String info = null;
         boolean infoOk = true;
 
-        if (selected >= 0 && !hiddenSel) {
-            World.Province pr = provinces[selected];
+        if (selProv != null && !hiddenSel) {
             ctx.drawTextWithShadow(textRenderer,
-                    Text.literal(textRenderer.trimToWidth(pr.name + " — " + World.FACTIONS[pr.owner].name(), pw)),
+                    Text.literal(textRenderer.trimToWidth(
+                            selProv.name + " — " + World.FACTIONS[selProv.owner].name(), pw)),
                     px, TOP, 0xFFD700);
             int y = TOP + 16;
-            for (int i = 0; i < pr.points.size(); i++) {
-                World.Point p = pr.points.get(i);
+            for (int i = 0; i < selProv.points.size(); i++) {
+                World.Point p = selProv.points.get(i);
                 if (i == selectedPoint) {
                     ctx.fill(px - 2, y - 1, px + pw, y + ROW_H - 1, 0x40FFFFFF);
                 }
                 String s = p.type.label + " " + p.name + " ур." + p.level + "  +" + p.production() + " "
                         + p.type.resource.label + (p.unrest >= 20 ? " !" : "");
+                int color = p.owner != 0 ? 0xAAAAAA : (p.unrest >= 20 ? 0xFF5555 : 0xFFFFFF);
                 ctx.drawTextWithShadow(textRenderer,
                         Text.literal(textRenderer.trimToWidth(s, pw)),
-                        px, y, p.unrest >= 20 ? 0xFF5555 : 0xFFFFFF);
+                        px, y, color);
                 y += ROW_H;
             }
-            if (sp != null) {
+            if (mine) {
                 infoOk = upgradeBtn.active;
-                if (sp.owner != 0) {
-                    info = "Це не твоя точка";
-                } else if (sp.level >= GameState.MAX_LEVEL) {
+                if (sp.level >= GameState.MAX_LEVEL) {
                     info = "Максимальний рівень";
                 } else {
                     info = "Ціна: Золото " + GameState.costGold(sp) + ", Дерево " + GameState.costWood(sp)
                             + ", Залізо " + GameState.costIron(sp);
                 }
+            } else if (enemy) {
+                if (!GameState.isNearMine(selProv)) {
+                    info = "Занадто далеко від твоїх земель";
+                    infoOk = false;
+                } else if (GameState.armyPower() == 0) {
+                    info = "Немає війська";
+                    infoOk = false;
+                } else {
+                    int approx = Math.round(sp.garrison / 5f) * 5;
+                    info = "Сила: " + GameState.armyPower() + " проти гарнізону ~" + approx;
+                }
             }
         } else if (hiddenSel) {
             ctx.drawTextWithShadow(textRenderer, Text.literal("Невідома територія"), px, TOP, 0xFFD700);
-            if (!GameState.nextToExplored(provinces[selected])) {
+            if (!GameState.nextToExplored(selProv)) {
                 info = "Спершу відкрий сусідню територію";
                 infoOk = false;
             } else {
@@ -221,6 +253,15 @@ public class StrategyMapScreen extends Screen {
             ctx.drawTextWithShadow(textRenderer, Text.literal("Натисни на провінцію"), px, TOP, 0xFFFFFF);
         }
 
+        ctx.drawTextWithShadow(textRenderer,
+                Text.literal(textRenderer.trimToWidth("Сила армії: " + GameState.armyPower()
+                        + "   Полонених: " + GameState.prisoners, pw)),
+                px, this.height - 92, 0xDDDDDD);
+        if (!GameState.log.isEmpty()) {
+            ctx.drawTextWithShadow(textRenderer,
+                    Text.literal(textRenderer.trimToWidth(GameState.log, pw)),
+                    px, this.height - 80, 0xFFD700);
+        }
         if (info != null) {
             ctx.drawTextWithShadow(textRenderer,
                     Text.literal(textRenderer.trimToWidth(info, pw)),
@@ -237,4 +278,4 @@ public class StrategyMapScreen extends Screen {
     public boolean shouldPause() {
         return false;
     }
-            }
+}
