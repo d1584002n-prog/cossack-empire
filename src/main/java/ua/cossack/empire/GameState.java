@@ -87,16 +87,17 @@ public final class GameState {
         turn++;
         updateRelations();
         updateUnrest();
+        growGarrisons();
         enemyTurn();
         randomEvent();
     }
 
     public static int upkeepFood() {
-        return (army[0] + army[1] + army[2]) / 3;
+        return (army[0] + army[1] + army[2]) / 2;
     }
 
     public static int upkeepGold() {
-        return armyPower() / 15;
+        return armyPower() / 5;
     }
 
     private static void desert(double ratio) {
@@ -157,6 +158,14 @@ public final class GameState {
         }
     }
 
+    private static void growGarrisons() {
+        for (World.Province pr : world.provinces) {
+            for (World.Point p : pr.points) {
+                if (p.owner != 0 && p.garrison < 10 + turn * 2) p.garrison++;
+            }
+        }
+    }
+
     private static boolean bordersFaction(World.Province target, int f) {
         for (World.Province q : world.provinces) {
             if (World.dist(target.col, target.row, q.col, q.row) > 1) continue;
@@ -187,8 +196,8 @@ public final class GameState {
             int k = RNG.nextInt(tPoint.size());
             World.Province prov = tProv.get(k);
             World.Point target = tPoint.get(k);
-            double att = (15 + turn * 1.5 + RNG.nextInt(25)) * (0.8 + RNG.nextDouble() * 0.4);
-            double def = (target.garrison + armyPower() / 4.0) * (1.0 + 0.1 * (target.level - 1))
+            double att = (20 + turn * 6 + RNG.nextInt(40)) * (0.8 + RNG.nextDouble() * 0.4);
+            double def = (target.garrison + armyPower() / 12.0) * (1.0 + 0.1 * (target.level - 1))
                     * (0.8 + RNG.nextDouble() * 0.4);
             String where = target.type.label + " " + target.name;
             desert(0.08);
@@ -389,6 +398,14 @@ public final class GameState {
                 relation[oldOwner] = Math.max(-100, relation[oldOwner] - 5);
             }
             addLog("Захоплено: " + where + ". Полонених: " + caught);
+
+            boolean all = true;
+            for (World.Province q : world.provinces) {
+                for (World.Point pt : q.points) {
+                    if (pt.owner != 0) all = false;
+                }
+            }
+            if (all) addLog("ПЕРЕМОГА! Усі землі під владою козаків");
         } else {
             desert(0.6);
             p.garrison = Math.max(2, p.garrison - (int) (att / 4));
@@ -471,4 +488,4 @@ public final class GameState {
     }
 
     private GameState() {}
-                }
+                        }
