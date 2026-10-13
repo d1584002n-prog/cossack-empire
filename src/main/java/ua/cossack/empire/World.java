@@ -61,6 +61,7 @@ public final class World {
         public final int col;
         public final int row;
         public int owner;
+        public boolean explored;
         public final List<Point> points = new ArrayList<>();
 
         Province(String name, int col, int row, int owner) {
@@ -102,8 +103,8 @@ public final class World {
         {"Чигирин", "Корсунь", "Біла Церква", "Умань", "Канів", "Черкаси", "Лубни", "Переяслав"},
         {"Суботів", "Мотронівка", "Медведівка", "Бужин", "Лебедин", "Кам'янка", "Вільшана", "Орлик"},
         {"Чорний ліс", "Дубова гай", "Бучина", "Соснівка", "Липова гать", "Грабова"},
-        {"Рудня", "Ковалівка", "Залізний брід", "Гамарня", "Ливарня", "Кузня Ковалів"},
-        {"Селітряна", "Порохівня", "Чорна гора", "Сірчана", "Димова", "Вугільна"},
+        {"Рудня", "Ковалівка", "Залізний брід", "Гамарня", "Ливарня", "Ковальська"},
+        {"Селітряна", "Чорний тайник", "Чорна гора", "Сірчана", "Димова", "Вугільна"},
         {"Широка балка", "Біла балка", "Вовча долина", "Кінська левада", "Високий курган", "Ковила"}
     };
 
@@ -170,6 +171,13 @@ public final class World {
             }
             provinces[i] = pr;
         }
+
+        for (Province pr : provinces) {
+            if (pr.owner != 0) continue;
+            for (Province q : provinces) {
+                if (dist(pr.col, pr.row, q.col, q.row) <= 1) q.explored = true;
+            }
+        }
     }
 
     private static boolean tooClose(int[][] cap, int f, int c, int r) {
@@ -195,4 +203,4 @@ public final class World {
         }
         return false;
     }
-                    }
+            }
