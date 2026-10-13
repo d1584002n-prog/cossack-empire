@@ -43,6 +43,7 @@ public final class World {
         public int owner;
         public int unrest;
         public int level = 1;
+        public int garrison;
 
         Point(String name, PointType type, int output, int owner) {
             this.name = name;
@@ -69,6 +70,16 @@ public final class World {
             this.col = col;
             this.row = row;
             this.owner = owner;
+        }
+
+        public void recalcOwner() {
+            int[] cnt = new int[World.FACTIONS.length];
+            for (Point p : points) cnt[p.owner]++;
+            int best = owner;
+            for (int f = 0; f < cnt.length; f++) {
+                if (cnt[f] > cnt[best]) best = f;
+            }
+            owner = best;
         }
     }
 
@@ -167,6 +178,7 @@ public final class World {
                 int out = t == PointType.TOWN ? 6 + rnd.nextInt(10) : 2 + rnd.nextInt(7);
                 Point p = new Point(name, t, out, owner);
                 p.unrest = rnd.nextInt(30);
+                p.garrison = t == PointType.TOWN ? 8 + rnd.nextInt(14) : 3 + rnd.nextInt(9);
                 pr.points.add(p);
             }
             provinces[i] = pr;
@@ -203,4 +215,4 @@ public final class World {
         }
         return false;
     }
-            }
+                }
