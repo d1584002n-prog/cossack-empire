@@ -87,9 +87,12 @@ public class StrategyMapScreen extends Screen {
             if (i == selected) {
                 ctx.drawBorder(x + 2, y + 2, w - 4, h - 4, 0xFFFFFFFF);
             }
-            ctx.drawCenteredTextWithShadow(textRenderer,
-                    Text.literal(textRenderer.trimToWidth(pr.name, w - 4)),
-                    x + w / 2, y + h / 2 - 4, 0xFFFFFF);
+
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate(x + w / 2f, y + h / 2f, 0f);
+            ctx.getMatrices().scale(0.75f, 0.75f, 1f);
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(pr.name), 0, -4, 0xFFFFFF);
+            ctx.getMatrices().pop();
         }
 
         int px = MARGIN + w * COLS + 12;
@@ -120,4 +123,4 @@ public class StrategyMapScreen extends Screen {
     public boolean shouldPause() {
         return false;
     }
-}
+ }
