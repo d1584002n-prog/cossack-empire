@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.Random;
 
 public final class World {
+    public static final int COLS = 10;
+    public static final int ROWS = 7;
+    private static final int STATES = 6;
 
     public enum ResourceType {
         GOLD("Золото"), FOOD("Їжа"), WOOD("Дерево"),
@@ -39,6 +42,7 @@ public final class World {
         public final int output;
         public int owner;
         public int unrest;
+        public int level = 1;
 
         Point(String name, PointType type, int output, int owner) {
             this.name = name;
@@ -46,15 +50,23 @@ public final class World {
             this.output = output;
             this.owner = owner;
         }
+
+        public int production() {
+            return output + (level - 1) * Math.max(1, output / 2);
+        }
     }
 
     public static final class Province {
         public final String name;
+        public final int col;
+        public final int row;
         public int owner;
         public final List<Point> points = new ArrayList<>();
 
-        Province(String name, int owner) {
+        Province(String name, int col, int row, int owner) {
             this.name = name;
+            this.col = col;
+            this.row = row;
             this.owner = owner;
         }
     }
@@ -65,13 +77,25 @@ public final class World {
         new Faction("Московія", 0xFF7B4FA3, false),
         new Faction("Османи", 0xFF2E8B57, false),
         new Faction("Кримське ханство", 0xFF2F7FB5, false),
+        new Faction("Швеція", 0xFF4FA3A3, false),
         new Faction("Повстанці", 0xFF8B4513, false)
     };
 
     private static final String[] PROVINCE_NAMES = {
-        "Волинь", "Київщина", "Лівобережжя", "Слобожанщина",
-        "Галичина", "Брацлавщина", "Запоріжжя", "Дике поле",
-        "Поділля", "Буджак", "Очаків", "Крим"
+        "Волинь", "Київщина", "Лівобережжя", "Слобожанщина", "Галичина",
+        "Брацлавщина", "Запоріжжя", "Дике поле", "Поділля", "Буджак",
+        "Очаків", "Крим", "Полтавщина", "Чернігівщина", "Сіверщина",
+        "Покуття", "Закарпаття", "Буковина", "Полісся", "Побужжя",
+        "Подніпров'я", "Степова", "Донеччина", "Азовщина", "Таврія",
+        "Херсонщина", "Одещина", "Миколаївщина", "Черкащина", "Уманщина",
+        "Сумщина", "Харківщина", "Луганщина", "Холмщина", "Підляшшя",
+        "Берестейщина", "Турівщина", "Гетьманщина", "Переяславщина", "Лубенщина",
+        "Миргородщина", "Ніжинщина", "Корсунщина", "Чигиринщина", "Вінниччина",
+        "Житомирщина", "Рівненщина", "Луцьчина", "Львівщина", "Тернопільщина",
+        "Бессарабія", "Молдова", "Мазовія", "Литва", "Смоленщина",
+        "Курщина", "Брянщина", "Орловщина", "Воронежчина", "Ростовщина",
+        "Кубань", "Тамань", "Кабарда", "Валахія", "Трансильванія",
+        "Сілезія", "Малопольща", "Познань", "Сяноччина", "Перемишльщина"
     };
 
     private static final String[][] NAMES = {
@@ -90,35 +114,79 @@ public final class World {
         this.seed = seed;
         Random rnd = new Random(seed);
 
-        List<Integer> order = new ArrayList<>();
-        for (int i = 0; i < PROVINCE_NAMES.length; i++) order.add(i);
-        Collections.shuffle(order, rnd);
+        List<String> names = new ArrayList<>(List.of(PROVINCE_NAMES));
+        Collections.shuffle(names, rnd);
 
-        int[] owners = new int[PROVINCE_NAMES.length];
-        for (int k = 0; k < order.size(); k++) {
-            owners[order.get(k)] = k < 3 ? 0 : 1 + (k - 3) % 4;
+        int[][] cap = new int[STATES][2];
+        cap[0] = new int[]{COLS / 2, ROWS / 2};
+        for (int f = 1; f < STATES; f++) {
+            int c;
+            int r;
+            int tries = 0;
+            do {
+                c = rnd.nextInt(COLS);
+                r = rnd.nextInt(ROWS);
+                tries++;
+            } while (tooClose(cap, f, c, r) && tries < 200);
+            cap[f] = new int[]{c, r};
         }
 
-        provinces = new Province[PROVINCE_NAMES.length];
+        double[] weight = new double[STATES];
+        weight[0] = 1.0;
+        for (int f = 1; f < STATES; f++) weight[f] = 0.8 + rnd.nextDouble() * 0.6;
+
+        provinces = new Province[COLS * ROWS];
         PointType[] types = PointType.values();
 
         for (int i = 0; i < provinces.length; i++) {
-            Province pr = new Province(PROVINCE_NAMES[i], owners[i]);
-            int count = 3 + rnd.nextInt(4);
+            int row = i / COLS;
+            int col = i % COLS;
+
+            int owner = 0;
+            double best = Double.MAX_VALUE;
+            for (int f = 0; f < STATES; f++) {
+                double d = dist(col, row, cap[f][0], cap[f][1]) * weight[f] + rnd.nextDouble() * 0.9;
+                if (d < best) {
+                    best = d;
+                    owner = f;
+                }
+            }
+
+            Province pr = new Province(names.get(i % names.size()), col, row, owner);
+            int count = 1 + rnd.nextInt(3);
             for (int j = 0; j < count; j++) {
-                PointType t = j == 0 ? PointType.TOWN : types[1 + rnd.nextInt(types.length - 1)];
+                PointType t = rnd.nextInt(4) == 0
+                        ? PointType.TOWN
+                        : types[1 + rnd.nextInt(types.length - 1)];
                 String[] pool = NAMES[t.ordinal()];
                 String name;
                 do {
                     name = pool[rnd.nextInt(pool.length)];
                 } while (usedName(pr, name));
                 int out = t == PointType.TOWN ? 6 + rnd.nextInt(10) : 2 + rnd.nextInt(7);
-                Point p = new Point(name, t, out, owners[i]);
+                Point p = new Point(name, t, out, owner);
                 p.unrest = rnd.nextInt(30);
                 pr.points.add(p);
             }
             provinces[i] = pr;
         }
+    }
+
+    private static boolean tooClose(int[][] cap, int f, int c, int r) {
+        for (int g = 0; g < f; g++) {
+            if (dist(c, r, cap[g][0], cap[g][1]) < 3) return true;
+        }
+        return false;
+    }
+
+    public static int dist(int c1, int r1, int c2, int r2) {
+        int x1 = c1 - (r1 - (r1 & 1)) / 2;
+        int z1 = r1;
+        int y1 = -x1 - z1;
+        int x2 = c2 - (r2 - (r2 & 1)) / 2;
+        int z2 = r2;
+        int y2 = -x2 - z2;
+        return Math.max(Math.abs(x1 - x2), Math.max(Math.abs(y1 - y2), Math.abs(z1 - z2)));
     }
 
     private static boolean usedName(Province pr, String name) {
@@ -127,4 +195,4 @@ public final class World {
         }
         return false;
     }
-}
+                    }
