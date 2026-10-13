@@ -5,6 +5,8 @@ import java.util.Map;
 
 public final class GameState {
     public static final int MAX_LEVEL = 5;
+    public static final int SPY_GOLD = 30;
+    public static final int SPY_HORSES = 5;
 
     public static World world;
     public static int turn;
@@ -58,6 +60,35 @@ public final class GameState {
         stock.merge(World.ResourceType.WOOD, -costWood(p), Integer::sum);
         stock.merge(World.ResourceType.IRON, -costIron(p), Integer::sum);
         p.level++;
+    }
+
+    public static boolean nextToExplored(World.Province target) {
+        for (World.Province q : world.provinces) {
+            if (q.explored && World.dist(target.col, target.row, q.col, q.row) <= 1) return true;
+        }
+        return false;
+    }
+
+    public static boolean canSpy(World.Province target) {
+        return !target.explored
+                && nextToExplored(target)
+                && stock.get(World.ResourceType.GOLD) >= SPY_GOLD
+                && stock.get(World.ResourceType.HORSES) >= SPY_HORSES;
+    }
+
+    public static void sendSpy(World.Province target) {
+        if (!canSpy(target)) return;
+        stock.merge(World.ResourceType.GOLD, -SPY_GOLD, Integer::sum);
+        stock.merge(World.ResourceType.HORSES, -SPY_HORSES, Integer::sum);
+        target.explored = true;
+    }
+
+    public static int exploredCount() {
+        int n = 0;
+        for (World.Province p : world.provinces) {
+            if (p.explored) n++;
+        }
+        return n;
     }
 
     private GameState() {}
