@@ -28,12 +28,15 @@ public class StrategyMapScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(Text.literal("Наступний хід"), b -> GameState.nextTurn())
                 .dimensions(this.width - 126, this.height - 28, 114, 20)
                 .build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Дипломатія"), b -> this.client.setScreen(new DiplomacyScreen(this)))
+                .dimensions(px(), this.height - 28, 88, 20)
+                .build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Нова гра"), b -> {
                     GameState.newGame();
                     selected = -1;
                     selectedPoint = -1;
                 })
-                .dimensions(this.width - 246, this.height - 28, 114, 20)
+                .dimensions(6, 4, 62, 20)
                 .build());
 
         upgradeBtn = ButtonWidget.builder(Text.literal("Покращити"), b -> {
@@ -129,6 +132,16 @@ public class StrategyMapScreen extends Screen {
             if (idx >= 0) {
                 selected = idx;
                 selectedPoint = -1;
+                World.Province pr = GameState.world.provinces[idx];
+                if (pr.explored) {
+                    for (int i = 0; i < pr.points.size(); i++) {
+                        if (pr.points.get(i).owner != 0) {
+                            selectedPoint = i;
+                            break;
+                        }
+                    }
+                    if (selectedPoint < 0 && !pr.points.isEmpty()) selectedPoint = 0;
+                }
                 return true;
             }
             if (selected >= 0 && GameState.world.provinces[selected].explored
@@ -232,6 +245,9 @@ public class StrategyMapScreen extends Screen {
                 if (!GameState.isNearMine(selProv)) {
                     info = "Занадто далеко від твоїх земель";
                     infoOk = false;
+                } else if (!GameState.atWarWith(sp)) {
+                    info = "Спершу оголоси війну (Дипломатія)";
+                    infoOk = false;
                 } else if (GameState.armyPower() == 0) {
                     info = "Немає війська";
                     infoOk = false;
@@ -253,15 +269,18 @@ public class StrategyMapScreen extends Screen {
             ctx.drawTextWithShadow(textRenderer, Text.literal("Натисни на провінцію"), px, TOP, 0xFFFFFF);
         }
 
+        for (int k = 2; k >= 0; k--) {
+            String s = GameState.logLine(k);
+            if (!s.isEmpty()) {
+                ctx.drawTextWithShadow(textRenderer,
+                        Text.literal(textRenderer.trimToWidth(s, pw)),
+                        px, this.height - 92 - k * 12, k == 0 ? 0xFFD700 : 0xAAAAAA);
+            }
+        }
         ctx.drawTextWithShadow(textRenderer,
                 Text.literal(textRenderer.trimToWidth("Сила армії: " + GameState.armyPower()
                         + "   Полонених: " + GameState.prisoners, pw)),
-                px, this.height - 92, 0xDDDDDD);
-        if (!GameState.log.isEmpty()) {
-            ctx.drawTextWithShadow(textRenderer,
-                    Text.literal(textRenderer.trimToWidth(GameState.log, pw)),
-                    px, this.height - 80, 0xFFD700);
-        }
+                px, this.height - 80, 0xDDDDDD);
         if (info != null) {
             ctx.drawTextWithShadow(textRenderer,
                     Text.literal(textRenderer.trimToWidth(info, pw)),
@@ -278,4 +297,4 @@ public class StrategyMapScreen extends Screen {
     public boolean shouldPause() {
         return false;
     }
-}
+                }
