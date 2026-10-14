@@ -18,7 +18,7 @@ public final class World {
         MEADOW("Поляна", 0xFF8DB35A),
         FOREST("Ліс", 0xFF3F6B34),
         MOUNTAIN("Гори", 0xFF7C7C7C),
-        STEPPE("Степ", 0xFFB5A44F);
+        STEPPE("Степ", 0xFF9C8B5A);
 
         public final String label;
         public final int color;
@@ -381,4 +381,4 @@ public final class World {
         }
         return false;
     }
-        }
+  }
