@@ -190,7 +190,7 @@ public class StrategyMapScreen extends Screen {
     private int provColor(World.Province pr) {
         if (!pr.explored) return FOG_COLOR;
         if (pr.terrain == World.Terrain.WATER) return pr.terrain.color;
-        return mix(pr.terrain.color, World.FACTIONS[pr.owner].color(), 0.45f);
+        return mix(pr.terrain.color, World.FACTIONS[pr.owner].color(), 0.6f);
     }
 
     private void hex(DrawContext ctx, float cx, float cy, float r, int color) {
@@ -503,7 +503,7 @@ public class StrategyMapScreen extends Screen {
                 if (sc >= 0.45f) {
                     ctx.getMatrices().push();
                     ctx.getMatrices().translate(cx, cy + r * 0.3f, 0f);
-                          ctx.getMatrices().scale(sc, sc, 1f);
+                           ctx.getMatrices().scale(sc, sc, 1f);
                     ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(pr.name), 0, 0, 0xFFFFFF);
                     ctx.getMatrices().pop();
                 }
@@ -516,7 +516,8 @@ public class StrategyMapScreen extends Screen {
         int zy = TOP + mapH() - 17;
         for (int k = 0; k < 3; k++) {
             int bx = mapX() + 3 + k * 17;
-            panel(ctx, bx, zy, 15, 15);
+            ctx.fill(bx, zy, bx + 15, zy + 15, 0xFF000000);
+            ctx.drawBorder(bx, zy, 15, 15, 0xFF6B5A2E);
             ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(zl[k]), bx + 8, zy + 4, 0xFFFFFF);
         }
         text(ctx, String.format("x%.1f", zoom), mapX() + 57, zy + 4, 0xDDDDDD);
@@ -558,8 +559,7 @@ public class StrategyMapScreen extends Screen {
                 info2 = "сусідню територію";
                 infoOk = false;
             } else {
-                info1 = "Шпигун: Золото " + GameState.SPY_GOLD + ",";
-                info2 = "Коні " + GameState.SPY_HORSES;
+                info1 = "Шпигун: Золото " + GameState.SPY_GOLD;
                 infoOk = spyBtn.active;
             }
         } else if (waterSel) {
@@ -629,4 +629,4 @@ public class StrategyMapScreen extends Screen {
     public boolean shouldPause() {
         return false;
     }
-                    }
+                                                   }
