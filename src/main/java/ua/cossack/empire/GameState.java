@@ -8,8 +8,8 @@ import java.util.Random;
 
 public final class GameState {
     public static final int MAX_LEVEL = 5;
-    public static final int SPY_GOLD = 30;
-    public static final int SPY_HORSES = 5;
+    public static final int SPY_GOLD = 40;
+    public static final int SPY_HORSES = 0;
     public static final int REBELS = 6;
     private static final int LAST_STATE = 5;
 
@@ -402,7 +402,7 @@ public final class GameState {
             boolean all = true;
             for (World.Province q : world.provinces) {
                 for (World.Point pt : q.points) {
-                    if (pt.owner != 0) all = false;
+                    if (pt.owner != 0 && pt.owner != World.WATER_OWNER) all = false;
                 }
             }
             if (all) addLog("ПЕРЕМОГА! Усі землі під владою козаків");
@@ -488,4 +488,4 @@ public final class GameState {
     }
 
     private GameState() {}
-                        }
+    }
