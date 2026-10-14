@@ -221,45 +221,102 @@ public class StrategyMapScreen extends Screen {
                 && cy + r >= TOP && cy - r <= TOP + mapH();
     }
 
+    // Стиль 3: яскрава Minecraft-RPG карта з великими об'єктами, що виступають за межі гексів.
     private void decorate(DrawContext ctx, World.Province pr, float cx, float cy, float r) {
-        int s = Math.max(1, Math.round(r / 7f));
+        int s = Math.max(1, Math.round(r / 8f));
         int x = Math.round(cx);
         int y = Math.round(cy);
+
+        // Дрібні блокові деталі місцевості.
+        if (pr.terrain != World.Terrain.WATER) {
+            int grass = pr.terrain == World.Terrain.STEPPE ? 0xFFB6A34A : 0xFF65B846;
+            ctx.fill(x - 3*s, y + s, x - 2*s, y + 2*s, grass);
+            ctx.fill(x + 2*s, y - s, x + 3*s, y, grass);
+            ctx.fill(x - s, y + 2*s, x, y + 2*s + 1, 0xFF8BD35C);
+        }
+
         switch (pr.terrain) {
             case FOREST -> {
-                ctx.fill(x - 2 * s, y - s, x - s, y + s, 0xFF1F4A1C);
-                ctx.fill(x + s, y, x + 2 * s, y + 2 * s, 0xFF1F4A1C);
-                ctx.fill(x - s, y + s, x, y + 2 * s, 0xFF2A5E26);
+                // Густі кубічні дерева, крони навмисно виходять за межі гекса.
+                for (int k = 0; k < 3; k++) {
+                    int tx = x + (k - 1) * 3 * s;
+                    int ty = y + (k == 1 ? -2 : 1) * s;
+                    ctx.fill(tx, ty + 2*s, tx + s, ty + 5*s, 0xFF70452A);
+                    ctx.fill(tx - 2*s, ty, tx + 3*s, ty + 3*s, 0xFF26752A);
+                    ctx.fill(tx - s, ty - s, tx + 2*s, ty + 2*s, 0xFF3D9638);
+                    ctx.fill(tx - s, ty - s, tx + s, ty, 0xFF69B84A);
+                }
             }
             case MOUNTAIN -> {
-                ctx.fill(x, y - 2 * s, x + s, y - s, 0xFFF0F0F0);
-                ctx.fill(x - s, y - s, x + 2 * s, y, 0xFF5A5A5A);
-                ctx.fill(x - 2 * s, y, x + 3 * s, y + s, 0xFF4A4A4A);
+                // Багатошарові піксельні вершини зі сніговими шапками.
+                ctx.fill(x - 4*s, y + s, x + 4*s, y + 3*s, 0xFF66564A);
+                ctx.fill(x - 3*s, y - s, x + s, y + 2*s, 0xFF81766A);
+                ctx.fill(x - s, y - 4*s, x + 2*s, y + s, 0xFFA69E91);
+                ctx.fill(x - s, y - 4*s, x + 2*s, y - 3*s, 0xFFF2F0E8);
+                ctx.fill(x - 3*s, y - s, x - s, y, 0xFFD8D2C5);
+                ctx.fill(x + s, y, x + 3*s, y + s, 0xFF51463D);
             }
-            case WATER -> ctx.fill(x - 2 * s, y, x + 2 * s, y + 1, 0xFF6FA0D0);
+            case WATER -> {
+                ctx.fill(x - 3*s, y - s, x + 3*s, y, 0xFF56BCEB);
+                ctx.fill(x - s, y + s, x + 2*s, y + 2*s, 0xFF9BE4FF);
+                ctx.fill(x - 3*s, y + 2*s, x - s, y + 2*s + 1, 0xFF368FD0);
+            }
             case MEADOW -> {
-                ctx.fill(x - 2 * s, y - s, x - 2 * s + 1, y - s + 1, 0xFFFFE066);
-                ctx.fill(x + s, y + s, x + s + 1, y + s + 1, 0xFFFFFFFF);
+                ctx.fill(x - 3*s, y - s, x - 2*s, y, 0xFFFFE36E);
+                ctx.fill(x + s, y + s, x + 2*s, y + 2*s, 0xFFFFE36E);
+                ctx.fill(x + 2*s, y - 2*s, x + 3*s, y - s, 0xFFFFFFFF);
             }
             case STEPPE -> {
-                ctx.fill(x - s, y, x - s + 1, y + 2 * s, 0xFFD8C96A);
-                ctx.fill(x + s, y - s, x + s + 1, y + s, 0xFFD8C96A);
+                ctx.fill(x - 2*s, y, x - s, y + 2*s, 0xFFD9C15C);
+                ctx.fill(x + s, y - s, x + 2*s, y + s, 0xFFE7D16B);
             }
             default -> { }
+        }
+
+        // Поселення та козацькі укріплення.
+        boolean town = false;
+        for (World.Point p : pr.points) if (p.type == World.PointType.TOWN) town = true;
+        if (town && pr.terrain != World.Terrain.WATER && r >= 5f) {
+            int bx = x - 2*s, by = y - 3*s;
+            // палісад
+            ctx.fill(bx - s, by + 2*s, bx + 5*s, by + 3*s, 0xFF8C5A30);
+            ctx.fill(bx - s, by, bx, by + 3*s, 0xFF9C6A38);
+            ctx.fill(bx + 4*s, by, bx + 5*s, by + 3*s, 0xFF9C6A38);
+            // кам'яна башта
+            ctx.fill(bx + s, by, bx + 3*s, by + 3*s, 0xFF9A9A91);
+            ctx.fill(bx + s, by - s, bx + 3*s, by, 0xFF6F6F68);
+            ctx.fill(bx + 2*s, by + s, bx + 3*s, by + 2*s, 0xFF454545);
+            // червоний козацький дах/прапорець
+            ctx.fill(bx, by - 2*s, bx + 4*s, by - s, 0xFF9B3028);
+            ctx.fill(bx + 2*s, by - 4*s, bx + 2*s + 1, by - s, 0xFF49321F);
+            ctx.fill(bx + 2*s + 1, by - 4*s, bx + 5*s, by - 3*s, 0xFFD84335);
+        } else if (pr.terrain != World.Terrain.WATER && r >= 8f) {
+            // Поодинокі дерев'яні будівлі в селах і ресурсних точках.
+            boolean settlement = false;
+            for (World.Point p : pr.points) {
+                if (p.type == World.PointType.VILLAGE || p.type == World.PointType.SMITHY
+                        || p.type == World.PointType.POWDER_WORKS) settlement = true;
+            }
+            if (settlement) {
+                int hx = x + 2*s, hy = y - 2*s;
+                ctx.fill(hx, hy + s, hx + 3*s, hy + 3*s, 0xFF9B6A3C);
+                ctx.fill(hx - s, hy, hx + 4*s, hy + s, 0xFF7C3427);
+                ctx.fill(hx + s, hy + 2*s, hx + 2*s, hy + 3*s, 0xFF3D2819);
+            }
         }
     }
 
     private void flag(DrawContext ctx, World.Province pr, float cx, float cy, float r) {
         boolean town = false;
-        for (World.Point p : pr.points) {
-            if (p.type == World.PointType.TOWN) town = true;
-        }
+        for (World.Point p : pr.points) if (p.type == World.PointType.TOWN) town = true;
         if (!town || pr.owner == World.WATER_OWNER || r < 6f) return;
-        int fs = Math.max(1, Math.round(r / 8f));
-        int fx = Math.round(cx + r * 0.25f);
-        int fy = Math.round(cy - r * 0.6f);
-        ctx.fill(fx, fy, fx + 1, fy + 5 * fs, 0xFF3B2A14);
-        ctx.fill(fx + 1, fy, fx + 1 + 3 * fs, fy + 2 * fs, World.FACTIONS[pr.owner].color());
+        int fs = Math.max(1, Math.round(r / 9f));
+        int fx = Math.round(cx + r * 0.34f);
+        int fy = Math.round(cy - r * 0.95f);
+        ctx.fill(fx, fy, fx + fs, fy + 7 * fs, 0xFF3B2A14);
+        int flag = pr.owner == 0 ? 0xFFD83A32 : World.FACTIONS[pr.owner].color();
+        ctx.fill(fx + fs, fy, fx + 5 * fs, fy + 2 * fs, flag);
+        if (pr.owner == 0) ctx.fill(fx + fs, fy + 2 * fs, fx + 4 * fs, fy + 3 * fs, 0xFFF3D55B);
     }
 
     private void panel(DrawContext ctx, int x, int y, int w, int h) {
@@ -484,10 +541,12 @@ public class StrategyMapScreen extends Screen {
                     centerX(nx.col, nx.row), centerY(nx.row), rw, 0xFF5CA0E0);
         }
 
-        for (World.Province pr : provinces) {
+        java.util.List<World.Province> drawOrder = new java.util.ArrayList<>(java.util.Arrays.asList(provinces));
+        drawOrder.sort(java.util.Comparator.comparingDouble(pr -> centerY(pr.row)));
+        for (World.Province pr : drawOrder) {
             float cx = centerX(pr.col, pr.row);
             float cy = centerY(pr.row);
-            if (!visible(cx, cy, r)) continue;
+            if (!visible(cx, cy, r + 5f)) continue;
             if (!pr.explored) {
                 if (r >= 6f) {
                     ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("?"),
