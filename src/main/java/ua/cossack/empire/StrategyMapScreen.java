@@ -34,6 +34,8 @@ public class StrategyMapScreen extends Screen {
     private float panY = 0f;
     private boolean dragging = false;
     private double moved = 0;
+    // За замовчуванням карта виглядає суцільною; внутрішню гекс-сітку можна ввімкнути кнопкою #.
+    private boolean showHexGrid = false;
 
     public StrategyMapScreen() {
         super(Text.literal("Козацька Держава"));
@@ -358,7 +360,7 @@ public class StrategyMapScreen extends Screen {
 
         int zy = TOP + mapH() - 17;
         if (my >= zy && my < zy + 15) {
-            for (int k = 0; k < 3; k++) {
+            for (int k = 0; k < 4; k++) {
                 int bx = mapX() + 3 + k * 17;
                 if (mx >= bx && mx < bx + 15) {
                     double cx = mapX() + mapW() / 2.0;
@@ -367,11 +369,13 @@ public class StrategyMapScreen extends Screen {
                         zoomAt(cx, cy, 1.4f);
                     } else if (k == 1) {
                         zoomAt(cx, cy, 1f / 1.4f);
-                    } else {
+                    } else if (k == 2) {
                         zoom = 1f;
                         panX = 0f;
                         panY = 0f;
                         clampPan();
+                    } else {
+                        showHexGrid = !showHexGrid;
                     }
                     return true;
                 }
@@ -526,7 +530,8 @@ public class StrategyMapScreen extends Screen {
                     hex(ctx, cx, cy, r, 0xFFFFFFFF);
                     hex(ctx, cx, cy, r - 1.6f, provColor(pr));
                 } else {
-                    hex(ctx, cx, cy, r - 0.6f, provColor(pr));
+                    // Без сітки сусідні провінції зливаються в цілісну карту.
+                    hex(ctx, cx, cy, showHexGrid ? r - 0.6f : r + 0.65f, provColor(pr));
                 }
                 if (i == hovered) hex(ctx, cx, cy, r - 0.6f, 0x30FFFFFF);
             }
@@ -571,15 +576,16 @@ public class StrategyMapScreen extends Screen {
         ctx.disableScissor();
 
         // ----- кнопки масштабу -----
-        String[] zl = {"+", "-", "0"};
+        String[] zl = {"+", "-", "0", "#"};
         int zy = TOP + mapH() - 17;
-        for (int k = 0; k < 3; k++) {
+        for (int k = 0; k < 4; k++) {
             int bx = mapX() + 3 + k * 17;
             ctx.fill(bx, zy, bx + 15, zy + 15, 0xFF000000);
             ctx.drawBorder(bx, zy, 15, 15, 0xFF6B5A2E);
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(zl[k]), bx + 8, zy + 4, 0xFFFFFF);
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(zl[k]), bx + 8, zy + 4,
+                    k == 3 && showHexGrid ? 0xFFFF55 : 0xFFFFFF);
         }
-        text(ctx, String.format("x%.1f", zoom), mapX() + 57, zy + 4, 0xDDDDDD);
+        text(ctx, String.format("x%.1f", zoom), mapX() + 74, zy + 4, 0xDDDDDD);
 
         // ----- мінікарта -----
         int rx = rightX();
