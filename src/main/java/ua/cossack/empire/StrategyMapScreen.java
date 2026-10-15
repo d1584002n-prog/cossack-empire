@@ -4,6 +4,8 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.client.render.RenderLayer;
 
 public class StrategyMapScreen extends Screen {
     private static final float SQ3 = 1.7320508f;
@@ -54,13 +56,13 @@ public class StrategyMapScreen extends Screen {
                 .dimensions(MARGIN, 4, 62, 20)
                 .build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Наступний хід"), b -> GameState.nextTurn())
+        addDrawableChild(ButtonWidget.builder(Text.empty(), b -> GameState.nextTurn())
                 .dimensions(this.width - 116, this.height - 26, 110, 20)
                 .build());
 
         for (int i = 0; i < MENU.length; i++) {
             final int idx = i;
-            ButtonWidget b = ButtonWidget.builder(Text.literal(MENU[i]), btn -> openTab(idx))
+            ButtonWidget b = ButtonWidget.builder(Text.empty(), btn -> openTab(idx))
                     .dimensions(MARGIN + i * 73, this.height - 26, 70, 20)
                     .build();
             b.active = i == 0 || i == 2;
@@ -481,6 +483,12 @@ public class StrategyMapScreen extends Screen {
 
     // ---------- відмальовка ----------
 
+    private void drawRpgIcon(DrawContext ctx, String name, int x, int y, int size) {
+        Identifier texture = Identifier.of("cossack_empire", "textures/gui/icons/" + name + ".png");
+        ctx.drawTexture(RenderLayer::getGuiTextured, texture, x, y, 0.0f, 0.0f,
+                size, size, 512, 512);
+    }
+
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         clampPan();
@@ -502,6 +510,17 @@ public class StrategyMapScreen extends Screen {
                 mine && sp.level < GameState.MAX_LEVEL ? "Покращити до ур." + (sp.level + 1) : "Покращити"));
 
         super.render(ctx, mouseX, mouseY, delta);
+
+        // RPG-іконки на панелі керування. Текстури завантажуються з assets/cossack_empire/textures/gui/icons.
+        String[] iconNames = {"army", "cities", "diplomacy", "economy", "technology"};
+        for (int i = 0; i < iconNames.length; i++) {
+            int bx = MARGIN + i * 73;
+            drawRpgIcon(ctx, iconNames[i], bx + 3, this.height - 24, 16);
+            ctx.drawTextWithShadow(textRenderer, Text.literal(MENU[i]), bx + 21, this.height - 20, 0xFFFFFFFF);
+        }
+        int nextX = this.width - 116;
+        drawRpgIcon(ctx, "next_turn", nextX + 5, this.height - 24, 16);
+        ctx.drawTextWithShadow(textRenderer, Text.literal("Наступний хід"), nextX + 24, this.height - 20, 0xFFFFFFFF);
 
         // ----- верхня панель ресурсів -----
         String line1 = res(World.ResourceType.GOLD) + "   " + res(World.ResourceType.FOOD)
