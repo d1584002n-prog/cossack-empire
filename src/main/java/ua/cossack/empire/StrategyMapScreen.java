@@ -220,6 +220,7 @@ public class StrategyMapScreen extends Screen {
     }
 
     private void drawTiles(DrawContext ctx, float r, int hovered) {
+        World.Province[] provinces = GameState.world.provinces;
         for (int pass = 0; pass < 2; pass++) {
             for (int i = 0; i < provinces.length; i++) {
                 boolean isSel = i == selected;
@@ -244,6 +245,7 @@ public class StrategyMapScreen extends Screen {
 
     /** Усі об'єкти карти сортуються за Y основи: нижчі перекривають вищі, спрайти виступають угору за гекс. */
     private void drawObjects(DrawContext ctx, float r) {
+        World.Province[] provinces = GameState.world.provinces;
         java.util.List<Item> items = new java.util.ArrayList<>();
         for (World.Province pr : provinces) {
             if (!pr.explored) continue;
