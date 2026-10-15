@@ -19,6 +19,7 @@ public class StrategyMapScreen extends Screen {
     private static final int MINI = 5;
     private static final int FOG_COLOR = 0xFF404040;
     private static final float MAX_ZOOM = 4f;
+    private static final int ICON_SRC = 32; // розмір PNG-іконок у ресурсах
 
     private static final String[] SHORT =
             {"Козаки", "Польща", "Московія", "Османи", "Татари", "Швеція", "Повстанці", "Вода"};
@@ -332,7 +333,7 @@ public class StrategyMapScreen extends Screen {
             if (reg == null) continue;
             if (p.type == World.PointType.TOWN) {
                 float by = cy + 0.58f * r; // основа нижче центру → верх замку виступає за гекс
-                addSprite(ctx, out, reg, cx, by, r, 0.95f);
+                addSprite(ctx, out, reg, cx, by, r, 0.8f);
                 // прапорець над дахом замку (flag() малює від cy - 0.95r)
                 out.add(new Item(by + 0.01f, () -> flag(ctx, pr, cx, cy - r * 0.6f, r)));
             } else if (k < pslot.length) {
@@ -486,7 +487,18 @@ public class StrategyMapScreen extends Screen {
     private void drawRpgIcon(DrawContext ctx, String name, int x, int y, int size) {
         Identifier texture = Identifier.of("cossack_empire", "textures/gui/icons/" + name + ".png");
         ctx.drawTexture(RenderLayer::getGuiTextured, texture, x, y, 0.0f, 0.0f,
-                size, size, 512, 512);
+                size, size, ICON_SRC, ICON_SRC, ICON_SRC, ICON_SRC, 0xFFFFFFFF);
+    }
+
+    /** Напис, який стискається, якщо не вміщується в maxW. */
+    private void menuLabel(DrawContext ctx, String s, int x, int y, int maxW) {
+        int w = textRenderer.getWidth(s);
+        float sc = w > maxW ? (float) maxW / w : 1f;
+        ctx.getMatrices().push();
+        ctx.getMatrices().translate(x, y + (1f - sc) * 4f, 0f);
+        ctx.getMatrices().scale(sc, sc, 1f);
+        ctx.drawTextWithShadow(textRenderer, Text.literal(s), 0, 0, 0xFFFFFFFF);
+        ctx.getMatrices().pop();
     }
 
     @Override
@@ -516,11 +528,11 @@ public class StrategyMapScreen extends Screen {
         for (int i = 0; i < iconNames.length; i++) {
             int bx = MARGIN + i * 73;
             drawRpgIcon(ctx, iconNames[i], bx + 3, this.height - 24, 16);
-            ctx.drawTextWithShadow(textRenderer, Text.literal(MENU[i]), bx + 21, this.height - 20, 0xFFFFFFFF);
+            menuLabel(ctx, MENU[i], bx + 21, this.height - 20, 46);
         }
         int nextX = this.width - 116;
         drawRpgIcon(ctx, "next_turn", nextX + 5, this.height - 24, 16);
-        ctx.drawTextWithShadow(textRenderer, Text.literal("Наступний хід"), nextX + 24, this.height - 20, 0xFFFFFFFF);
+        menuLabel(ctx, "Наступний хід", nextX + 24, this.height - 20, 84);
 
         // ----- верхня панель ресурсів -----
         String line1 = res(World.ResourceType.GOLD) + "   " + res(World.ResourceType.FOOD)
