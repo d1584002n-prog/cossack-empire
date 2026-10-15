@@ -219,6 +219,31 @@ public class StrategyMapScreen extends Screen {
         return mix(0xFFFFFFFF, World.FACTIONS[pr.owner].color(), 0.35f);
     }
 
+    private void drawProvinceBorders(DrawContext ctx, float r) {
+        World.Province[] provinces = GameState.world.provinces;
+        int lineWidth = Math.max(1, Math.round(r / 12f));
+        for (World.Province pr : provinces) {
+            if (!pr.explored || pr.terrain == World.Terrain.WATER) continue;
+            float cx = centerX(pr.col, pr.row);
+            float cy = centerY(pr.row);
+            if (!visible(cx, cy, r + lineWidth)) continue;
+            int factionColor = World.FACTIONS[pr.owner].color();
+            // Межі трохи приглушені, щоб не перекривати текстури лісів і поселень.
+            int border = (factionColor & 0x00FFFFFF) | 0xA0000000;
+            float[] vx = new float[6];
+            float[] vy = new float[6];
+            for (int i = 0; i < 6; i++) {
+                double a = Math.toRadians(-90 + i * 60);
+                vx[i] = cx + (float) Math.cos(a) * r;
+                vy[i] = cy + (float) Math.sin(a) * r;
+            }
+            for (int i = 0; i < 6; i++) {
+                int j = (i + 1) % 6;
+                line(ctx, vx[i], vy[i], vx[j], vy[j], lineWidth, border);
+            }
+        }
+    }
+
     private void drawTiles(DrawContext ctx, float r, int hovered) {
         World.Province[] provinces = GameState.world.provinces;
         for (int pass = 0; pass < 2; pass++) {
@@ -526,6 +551,8 @@ public class StrategyMapScreen extends Screen {
         ctx.enableScissor(vx1, vy1, vx2, vy2);
 
         drawTiles(ctx, r, hovered);
+        // Кольорові межі провінцій у стилі стратегічної RPG-карти.
+        drawProvinceBorders(ctx, r);
 
         int rw = Math.max(1, Math.round(r / 9f));
         for (World.Province pr : provinces) {
