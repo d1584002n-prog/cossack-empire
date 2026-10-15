@@ -5,11 +5,11 @@ import net.minecraft.client.render.RenderLayer;
 import net.minecraft.util.Identifier;
 
 /**
- * Атлас спрайтів карти (textures/gui/map_atlas.png, 128x136, база: MiniWorld Sprites by Shade).
+ * Атлас спрайтів карти (map_atlas.png, 128x136, база: MiniWorld Sprites by Shade).
  * Усе малюється через одну текстуру, тому порядок викликів = порядок шарів.
  */
 public final class MapSprites {
-    public static final Identifier ATLAS = Identifier.of("cossack_empire", "textures/gui/map_atlas.png");
+    public static final Identifier ATLAS = Identifier.of("cossack_empire", "map_atlas.png");
     private static final int AW = 128, AH = 136;
     /** Гекс у атласі: 28x32 px, "радіус" 16 px (pointy-top). */
     public static final float HEX_R = 16f;
