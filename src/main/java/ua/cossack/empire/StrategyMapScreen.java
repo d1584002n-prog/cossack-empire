@@ -195,18 +195,6 @@ public class StrategyMapScreen extends Screen {
         return mix(pr.terrain.color, World.FACTIONS[pr.owner].color(), 0.6f);
     }
 
-    private void hex(DrawContext ctx, float cx, float cy, float r, int color) {
-        float hw = SQ3 / 2f * r;
-        int ir = (int) Math.ceil(r);
-        for (int dy = -ir; dy < ir; dy++) {
-            float a = Math.abs(dy + 0.5f);
-            float half = a <= r / 2f ? hw : hw * (r - a) / (r / 2f);
-            if (half <= 0f) continue;
-            int y = Math.round(cy + dy);
-            ctx.fill(Math.round(cx - half), y, Math.round(cx + half), y + 1, color);
-        }
-    }
-
     private void line(DrawContext ctx, float x1, float y1, float x2, float y2, int w, int color) {
         float dx = x2 - x1;
         float dy = y2 - y1;
@@ -223,87 +211,104 @@ public class StrategyMapScreen extends Screen {
                 && cy + r >= TOP && cy - r <= TOP + mapH();
     }
 
-    // Стиль 3: яскрава Minecraft-RPG карта з великими об'єктами, що виступають за межі гексів.
-    private void decorate(DrawContext ctx, World.Province pr, float cx, float cy, float r) {
-        int s = Math.max(1, Math.round(r / 8f));
-        int x = Math.round(cx);
-        int y = Math.round(cy);
 
-        // Дрібні блокові деталі місцевості.
-        if (pr.terrain != World.Terrain.WATER) {
-            int grass = pr.terrain == World.Terrain.STEPPE ? 0xFFB6A34A : 0xFF65B846;
-            ctx.fill(x - 3*s, y + s, x - 2*s, y + 2*s, grass);
-            ctx.fill(x + 2*s, y - s, x + 3*s, y, grass);
-            ctx.fill(x - s, y + 2*s, x, y + 2*s + 1, 0xFF8BD35C);
-        }
+    private record Item(float sortY, Runnable draw) {}
 
-        switch (pr.terrain) {
-            case FOREST -> {
-                // Густі кубічні дерева, крони навмисно виходять за межі гекса.
-                for (int k = 0; k < 3; k++) {
-                    int tx = x + (k - 1) * 3 * s;
-                    int ty = y + (k == 1 ? -2 : 1) * s;
-                    ctx.fill(tx, ty + 2*s, tx + s, ty + 5*s, 0xFF70452A);
-                    ctx.fill(tx - 2*s, ty, tx + 3*s, ty + 3*s, 0xFF26752A);
-                    ctx.fill(tx - s, ty - s, tx + 2*s, ty + 2*s, 0xFF3D9638);
-                    ctx.fill(tx - s, ty - s, tx + s, ty, 0xFF69B84A);
+    private int ownerTint(World.Province pr) {
+        if (pr.owner == World.WATER_OWNER) return 0xFFFFFFFF;
+        return mix(0xFFFFFFFF, World.FACTIONS[pr.owner].color(), 0.35f);
+    }
+
+    private void drawTiles(DrawContext ctx, float r, int hovered) {
+        for (int pass = 0; pass < 2; pass++) {
+            for (int i = 0; i < provinces.length; i++) {
+                boolean isSel = i == selected;
+                if ((pass == 1) != isSel) continue;
+                World.Province pr = provinces[i];
+                float cx = centerX(pr.col, pr.row);
+                float cy = centerY(pr.row);
+                if (!visible(cx, cy, r)) continue;
+                MapSprites.Region reg = pr.explored ? MapSprites.tileFor(pr.terrain) : MapSprites.TILE_FOG;
+                int tint = pr.explored && pr.terrain != World.Terrain.WATER ? ownerTint(pr) : 0xFFFFFFFF;
+                if (isSel) {
+                    MapSprites.hex(ctx, MapSprites.TILE_MASK, cx, cy, r, 0xFFFFFFFF);
+                    MapSprites.hex(ctx, reg, cx, cy, r - 1.6f, tint);
+                } else {
+                    // Без сітки сусідні провінції зливаються в цілісну карту.
+                    MapSprites.hex(ctx, reg, cx, cy, showHexGrid ? r - 0.6f : r + 0.65f, tint);
                 }
+                if (i == hovered) MapSprites.hex(ctx, MapSprites.TILE_MASK, cx, cy, r - 0.6f, 0x30FFFFFF);
             }
-            case MOUNTAIN -> {
-                // Багатошарові піксельні вершини зі сніговими шапками.
-                ctx.fill(x - 4*s, y + s, x + 4*s, y + 3*s, 0xFF66564A);
-                ctx.fill(x - 3*s, y - s, x + s, y + 2*s, 0xFF81766A);
-                ctx.fill(x - s, y - 4*s, x + 2*s, y + s, 0xFFA69E91);
-                ctx.fill(x - s, y - 4*s, x + 2*s, y - 3*s, 0xFFF2F0E8);
-                ctx.fill(x - 3*s, y - s, x - s, y, 0xFFD8D2C5);
-                ctx.fill(x + s, y, x + 3*s, y + s, 0xFF51463D);
-            }
-            case WATER -> {
-                ctx.fill(x - 3*s, y - s, x + 3*s, y, 0xFF56BCEB);
-                ctx.fill(x - s, y + s, x + 2*s, y + 2*s, 0xFF9BE4FF);
-                ctx.fill(x - 3*s, y + 2*s, x - s, y + 2*s + 1, 0xFF368FD0);
-            }
-            case MEADOW -> {
-                ctx.fill(x - 3*s, y - s, x - 2*s, y, 0xFFFFE36E);
-                ctx.fill(x + s, y + s, x + 2*s, y + 2*s, 0xFFFFE36E);
-                ctx.fill(x + 2*s, y - 2*s, x + 3*s, y - s, 0xFFFFFFFF);
-            }
-            case STEPPE -> {
-                ctx.fill(x - 2*s, y, x - s, y + 2*s, 0xFFD9C15C);
-                ctx.fill(x + s, y - s, x + 2*s, y + s, 0xFFE7D16B);
-            }
-            default -> { }
+        }
+    }
+
+    /** Усі об'єкти карти сортуються за Y основи: нижчі перекривають вищі, спрайти виступають угору за гекс. */
+    private void drawObjects(DrawContext ctx, float r) {
+        java.util.List<Item> items = new java.util.ArrayList<>();
+        for (World.Province pr : provinces) {
+            if (!pr.explored) continue;
+            float cx = centerX(pr.col, pr.row);
+            float cy = centerY(pr.row);
+            if (!visible(cx, cy - r * 0.6f, r * 1.8f)) continue;
+            collect(ctx, items, pr, cx, cy, r);
+        }
+        items.sort(java.util.Comparator.comparingDouble(Item::sortY));
+        for (Item it : items) it.draw().run();
+    }
+
+    private void addSprite(DrawContext ctx, java.util.List<Item> out, MapSprites.Region reg,
+                           float x, float baseY, float r, float scale) {
+        out.add(new Item(baseY, () -> MapSprites.sprite(ctx, reg, x, baseY, r, scale, 0xFFFFFFFF)));
+    }
+
+    private void collect(DrawContext ctx, java.util.List<Item> out, World.Province pr, float cx, float cy, float r) {
+        java.util.Random rnd = new java.util.Random(pr.col * 341873128712L ^ pr.row * 132897987541L);
+        boolean town = false;
+        boolean buildings = false;
+        for (World.Point p : pr.points) {
+            if (p.type == World.PointType.TOWN) town = true;
+            if (MapSprites.pointSprite(p.type) != null) buildings = true;
         }
 
-        // Поселення та козацькі укріплення.
-        boolean town = false;
-        for (World.Point p : pr.points) if (p.type == World.PointType.TOWN) town = true;
-        if (town && pr.terrain != World.Terrain.WATER && r >= 5f) {
-            int bx = x - 2*s, by = y - 3*s;
-            // палісад
-            ctx.fill(bx - s, by + 2*s, bx + 5*s, by + 3*s, 0xFF8C5A30);
-            ctx.fill(bx - s, by, bx, by + 3*s, 0xFF9C6A38);
-            ctx.fill(bx + 4*s, by, bx + 5*s, by + 3*s, 0xFF9C6A38);
-            // кам'яна башта
-            ctx.fill(bx + s, by, bx + 3*s, by + 3*s, 0xFF9A9A91);
-            ctx.fill(bx + s, by - s, bx + 3*s, by, 0xFF6F6F68);
-            ctx.fill(bx + 2*s, by + s, bx + 3*s, by + 2*s, 0xFF454545);
-            // червоний козацький дах/прапорець
-            ctx.fill(bx, by - 2*s, bx + 4*s, by - s, 0xFF9B3028);
-            ctx.fill(bx + 2*s, by - 4*s, bx + 2*s + 1, by - s, 0xFF49321F);
-            ctx.fill(bx + 2*s + 1, by - 4*s, bx + 5*s, by - 3*s, 0xFFD84335);
-        } else if (pr.terrain != World.Terrain.WATER && r >= 8f) {
-            // Поодинокі дерев'яні будівлі в селах і ресурсних точках.
-            boolean settlement = false;
-            for (World.Point p : pr.points) {
-                if (p.type == World.PointType.VILLAGE || p.type == World.PointType.SMITHY
-                        || p.type == World.PointType.POWDER_WORKS) settlement = true;
+        if (!town) {
+            float[][] slot = {{-0.42f, 0.18f}, {0.42f, 0.18f}, {0f, -0.05f}, {-0.2f, 0.5f}, {0.25f, 0.55f}};
+            int max = buildings ? 3 : slot.length;
+            float ox = (rnd.nextFloat() - 0.5f) * r;
+            switch (pr.terrain) {
+                case FOREST -> {
+                    MapSprites.Region[] trees = {MapSprites.TREE1, MapSprites.TREE2, MapSprites.TREE3,
+                            MapSprites.PINE1, MapSprites.PINE2};
+                    for (int i = 0; i < max; i++)
+                        addSprite(ctx, out, trees[rnd.nextInt(trees.length)],
+                                cx + slot[i][0] * r, cy + slot[i][1] * r, r, 1.15f);
+                }
+                case MOUNTAIN -> {
+                    addSprite(ctx, out, MapSprites.ROCK3, cx, cy + 0.30f * r, r, 2.0f);
+                    if (!buildings) {
+                        addSprite(ctx, out, MapSprites.ROCK1, cx - 0.45f * r, cy + 0.50f * r, r, 1.2f);
+                        addSprite(ctx, out, MapSprites.ROCK2, cx + 0.45f * r, cy + 0.55f * r, r, 1.2f);
+                    }
+                }
+                case MEADOW -> { if (rnd.nextInt(2) == 0) addSprite(ctx, out, MapSprites.TREE1, cx + ox, cy + 0.35f * r, r, 1.1f); }
+                case PLAINS -> { if (rnd.nextInt(3) == 0) addSprite(ctx, out, MapSprites.WHEAT, cx + ox, cy + 0.35f * r, r, 1.0f); }
+                case STEPPE -> { if (rnd.nextInt(3) == 0) addSprite(ctx, out, rnd.nextBoolean() ? MapSprites.TUMBLE : MapSprites.CACTUS, cx + ox, cy + 0.35f * r, r, 1.0f); }
+                default -> { }
             }
-            if (settlement) {
-                int hx = x + 2*s, hy = y - 2*s;
-                ctx.fill(hx, hy + s, hx + 3*s, hy + 3*s, 0xFF9B6A3C);
-                ctx.fill(hx - s, hy, hx + 4*s, hy + s, 0xFF7C3427);
-                ctx.fill(hx + s, hy + 2*s, hx + 2*s, hy + 3*s, 0xFF3D2819);
+        }
+
+        float[][] pslot = {{-0.42f, 0.38f}, {0.42f, 0.38f}, {0f, 0.66f}};
+        int k = 0;
+        for (World.Point p : pr.points) {
+            MapSprites.Region reg = MapSprites.pointSprite(p.type);
+            if (reg == null) continue;
+            if (p.type == World.PointType.TOWN) {
+                float by = cy + 0.58f * r; // основа нижче центру → верх замку виступає за гекс
+                addSprite(ctx, out, reg, cx, by, r, 0.95f);
+                // прапорець над дахом замку (flag() малює від cy - 0.95r)
+                out.add(new Item(by + 0.01f, () -> flag(ctx, pr, cx, cy - r * 0.6f, r)));
+            } else if (k < pslot.length) {
+                addSprite(ctx, out, reg, cx + pslot[k][0] * r, cy + pslot[k][1] * r, r, 0.9f);
+                k++;
             }
         }
     }
@@ -518,24 +523,7 @@ public class StrategyMapScreen extends Screen {
         ctx.fill(vx1, vy1, vx2, vy2, 0xFF0B0B0B);
         ctx.enableScissor(vx1, vy1, vx2, vy2);
 
-        for (int pass = 0; pass < 2; pass++) {
-            for (int i = 0; i < provinces.length; i++) {
-                boolean isSel = i == selected;
-                if ((pass == 1) != isSel) continue;
-                World.Province pr = provinces[i];
-                float cx = centerX(pr.col, pr.row);
-                float cy = centerY(pr.row);
-                if (!visible(cx, cy, r)) continue;
-                if (isSel) {
-                    hex(ctx, cx, cy, r, 0xFFFFFFFF);
-                    hex(ctx, cx, cy, r - 1.6f, provColor(pr));
-                } else {
-                    // Без сітки сусідні провінції зливаються в цілісну карту.
-                    hex(ctx, cx, cy, showHexGrid ? r - 0.6f : r + 0.65f, provColor(pr));
-                }
-                if (i == hovered) hex(ctx, cx, cy, r - 0.6f, 0x30FFFFFF);
-            }
-        }
+        drawTiles(ctx, r, hovered);
 
         int rw = Math.max(1, Math.round(r / 9f));
         for (World.Province pr : provinces) {
@@ -545,6 +533,8 @@ public class StrategyMapScreen extends Screen {
             line(ctx, centerX(pr.col, pr.row), centerY(pr.row),
                     centerX(nx.col, nx.row), centerY(nx.row), rw, 0xFF5CA0E0);
         }
+
+        drawObjects(ctx, r);
 
         java.util.List<World.Province> drawOrder = new java.util.ArrayList<>(java.util.Arrays.asList(provinces));
         drawOrder.sort(java.util.Comparator.comparingDouble(pr -> centerY(pr.row)));
@@ -559,8 +549,6 @@ public class StrategyMapScreen extends Screen {
                 }
                 continue;
             }
-            decorate(ctx, pr, cx, cy, r);
-            flag(ctx, pr, cx, cy, r);
             if (r >= 15f && pr.terrain != World.Terrain.WATER) {
                 int tw = textRenderer.getWidth(pr.name);
                 float sc = Math.min(0.8f, (r * SQ3 * 0.9f) / tw);
