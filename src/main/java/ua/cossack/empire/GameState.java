@@ -10,8 +10,8 @@ public final class GameState {
     public static final int MAX_LEVEL = 5;
     public static final int SPY_GOLD = 40;
     public static final int SPY_HORSES = 0;
-    public static final int REBELS = 6;
-    private static final int LAST_STATE = 5;
+    public static final int REBELS = World.REBELS;
+    private static final int LAST_STATE = Countries.ALL.length - 1;
 
     public static final String[] UNIT_NAMES = {"Козаки", "Мушкетери", "Кіннота"};
     public static final int[] UNIT_POWER = {3, 5, 6};
@@ -29,6 +29,10 @@ public final class GameState {
             new EnumMap<>(World.ResourceType.class);
     public static final int[] army = new int[3];
     public static int prisoners;
+
+    public static final boolean[] techDone = new boolean[Tech.values().length];
+    public static Tech researching;
+    public static int researchLeft;
 
     public static final int[] relation = new int[World.FACTIONS.length];
     public static final boolean[] atWar = new boolean[World.FACTIONS.length];
@@ -49,6 +53,9 @@ public final class GameState {
         army[1] = 0;
         army[2] = 0;
         prisoners = 0;
+        java.util.Arrays.fill(techDone, false);
+        researching = null;
+        researchLeft = 0;
         history.clear();
         for (int f = 0; f < World.FACTIONS.length; f++) {
             relation[f] = f >= 1 && f <= LAST_STATE ? RNG.nextInt(61) - 30 : 0;
@@ -74,7 +81,74 @@ public final class GameState {
                 if (p.owner == 0 && p.type.resource == r) total += p.production();
             }
         }
-        return total;
+        return total * Math.max(0, 100 + resourceBonus(r)) / 100;
+    }
+
+    // ---------- пори року (по 10 ходів) ----------
+
+    public static final int SEASON_TURNS = 10;
+    public static final String[] SEASON_NAMES = {"Весна", "Літо", "Осінь", "Зима"};
+    // зміна врожаю їжі, %
+    private static final int[] SEASON_FOOD = {0, 15, 30, -30};
+
+    public static int season() {
+        return ((turn - 1) / SEASON_TURNS) % 4;
+    }
+
+    public static int year() {
+        return 1572 + (turn - 1) / (SEASON_TURNS * 4);
+    }
+
+    public static String seasonLabel() {
+        int b = SEASON_FOOD[season()];
+        return SEASON_NAMES[season()] + (b != 0 ? " (їжа " + (b > 0 ? "+" : "") + b + "%)" : "");
+    }
+
+    // ---------- технології ----------
+
+    public static boolean hasTech(Tech t) {
+        return techDone[t.ordinal()];
+    }
+
+    private static int resourceBonus(World.ResourceType r) {
+        return switch (r) {
+            case FOOD -> (hasTech(Tech.FARMING) ? 20 : 0) + SEASON_FOOD[season()];
+            case WOOD, IRON -> hasTech(Tech.CRAFT) ? 20 : 0;
+            case GOLD -> hasTech(Tech.TRADE) ? 20 : 0;
+            case HORSES -> hasTech(Tech.HORSES) ? 25 : 0;
+            case POWDER -> hasTech(Tech.POWDER) ? 25 : 0;
+        };
+    }
+
+    public static boolean canResearch(Tech t) {
+        return !hasTech(t)
+                && researching == null
+                && (t.requires == null || hasTech(t.requires))
+                && stock.get(World.ResourceType.GOLD) >= t.gold
+                && stock.get(World.ResourceType.FOOD) >= t.food;
+    }
+
+    public static void startResearch(Tech t) {
+        if (!canResearch(t)) return;
+        stock.merge(World.ResourceType.GOLD, -t.gold, Integer::sum);
+        stock.merge(World.ResourceType.FOOD, -t.food, Integer::sum);
+        researching = t;
+        researchLeft = t.turns;
+        addLog("Почато дослідження: " + t.title);
+    }
+
+    private static void researchTurn() {
+        if (researching == null) return;
+        researchLeft--;
+        if (researchLeft <= 0) {
+            techDone[researching.ordinal()] = true;
+            addLog("Відкрито технологію: " + researching.title);
+            researching = null;
+        }
+    }
+
+    public static int spyCost() {
+        return hasTech(Tech.SPIES) ? SPY_GOLD / 2 : SPY_GOLD;
     }
 
     // ---------- хід ----------
@@ -84,7 +158,9 @@ public final class GameState {
             stock.merge(r, income(r), Integer::sum);
         }
         payUpkeep();
+        researchTurn();
         turn++;
+        if ((turn - 1) % SEASON_TURNS == 0) addLog("Настала пора року: " + SEASON_NAMES[season()]);
         updateRelations();
         updateUnrest();
         growGarrisons();
@@ -143,7 +219,7 @@ public final class GameState {
             if (atWar[f]) warAny = true;
         }
         boolean hungry = stock.get(World.ResourceType.FOOD) < 10;
-        int delta = (warAny ? 1 : 0) + (hungry ? 2 : 0) - 1;
+        int delta = (warAny ? 1 : 0) + (hungry ? 2 : 0) - 1 - (hasTech(Tech.COUNCIL) ? 1 : 0);
         for (World.Province pr : world.provinces) {
             for (World.Point p : pr.points) {
                 if (p.owner != 0) continue;
@@ -198,6 +274,7 @@ public final class GameState {
             World.Point target = tPoint.get(k);
             double att = (20 + turn * 6 + RNG.nextInt(40)) * (0.8 + RNG.nextDouble() * 0.4);
             double def = (target.garrison + armyPower() / 12.0) * (1.0 + 0.1 * (target.level - 1))
+                    * (hasTech(Tech.FORTS) ? 1.15 : 1.0)
                     * (0.8 + RNG.nextDouble() * 0.4);
             String where = target.type.label + " " + target.name;
             desert(0.08);
@@ -218,7 +295,7 @@ public final class GameState {
         if (RNG.nextInt(100) >= 35) return;
         switch (RNG.nextInt(5)) {
             case 0 -> {
-                if (allied[4]) return;
+                if (allied[Countries.CRIMEA]) return;
                 int g = Math.min(stock.get(World.ResourceType.GOLD), 30);
                 int fd = Math.min(stock.get(World.ResourceType.FOOD), 15);
                 stock.merge(World.ResourceType.GOLD, -g, Integer::sum);
@@ -289,13 +366,13 @@ public final class GameState {
     public static boolean canSpy(World.Province target) {
         return !target.explored
                 && nextToExplored(target)
-                && stock.get(World.ResourceType.GOLD) >= SPY_GOLD
+                && stock.get(World.ResourceType.GOLD) >= spyCost()
                 && stock.get(World.ResourceType.HORSES) >= SPY_HORSES;
     }
 
     public static void sendSpy(World.Province target) {
         if (!canSpy(target)) return;
-        stock.merge(World.ResourceType.GOLD, -SPY_GOLD, Integer::sum);
+        stock.merge(World.ResourceType.GOLD, -spyCost(), Integer::sum);
         stock.merge(World.ResourceType.HORSES, -SPY_HORSES, Integer::sum);
         target.explored = true;
     }
@@ -343,7 +420,7 @@ public final class GameState {
     public static int armyPower() {
         int s = 0;
         for (int i = 0; i < army.length; i++) s += army[i] * UNIT_POWER[i];
-        return s;
+        return hasTech(Tech.DRILL) ? s * 115 / 100 : s;
     }
 
     public static boolean isNearMine(World.Province target) {
@@ -405,7 +482,7 @@ public final class GameState {
                     if (pt.owner != 0 && pt.owner != World.WATER_OWNER) all = false;
                 }
             }
-            if (all) addLog("ПЕРЕМОГА! Усі землі під владою козаків");
+            if (all) addLog("ПЕРЕМОГА! Усі землі під владою Гетьманщини");
         } else {
             desert(0.6);
             p.garrison = Math.max(2, p.garrison - (int) (att / 4));
