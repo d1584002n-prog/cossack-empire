@@ -16,7 +16,7 @@ public class StrategyMapScreen extends Screen {
     private static final int LEFT_W = 96;
     private static final int RIGHT_W = 176;
     private static final int ROW_H = 12;
-    private static final int MINI = 3;
+    private static final int MINI = 2;
     private static final int FOG_COLOR = 0xFF404040;
     private static final float MAX_ZOOM = 10f;
     private static final int ICON_SRC = 32; // розмір PNG-іконок у ресурсах
@@ -104,7 +104,9 @@ public class StrategyMapScreen extends Screen {
 
     private void openTab(int i) {
         if (i == 0) this.client.setScreen(new ArmyScreen(this));
+        else if (i == 1) this.client.setScreen(new CitiesScreen(this));
         else if (i == 2) this.client.setScreen(new DiplomacyScreen(this));
+        else if (i == 3) this.client.setScreen(new EconomyScreen(this));
         else if (i == 4) this.client.setScreen(new TechScreen(this));
     }
 
@@ -208,7 +210,7 @@ public class StrategyMapScreen extends Screen {
 
     private int ownerTint(World.Province pr) {
         if (pr.owner == World.WATER_OWNER) return 0xFFFFFFFF;
-        return mix(0xFFFFFFFF, World.FACTIONS[pr.owner].color(), 0.35f);
+        return mix(0xFFFFFFFF, World.FACTIONS[pr.owner].color(), 0.12f);
     }
 
     private final int[] tintCache = new int[World.COLS * World.ROWS];
@@ -535,16 +537,17 @@ public class StrategyMapScreen extends Screen {
             if (pr.owner == 0) mineProv++;
         }
         int explored = GameState.exploredCount();
-        panel(ctx, MARGIN, TOP, LEFT_W, 68);
+        panel(ctx, MARGIN, TOP, LEFT_W, 80);
         text(ctx, "Території", MARGIN + 4, TOP + 4, 0xFFD700);
         text(ctx, "Твоїх: " + mineProv, MARGIN + 4, TOP + 16, 0xFFFFFF);
         text(ctx, "Відкрито: " + explored + "/" + provinces.length, MARGIN + 4, TOP + 26, 0xFFFFFF);
-        text(ctx, "Невідомо: " + (provinces.length - explored), MARGIN + 4, TOP + 36, 0xAAAAAA);
-        text(ctx, "Сила армії: " + GameState.armyPower(), MARGIN + 4, TOP + 46, 0xFFFFFF);
-        text(ctx, "Полонених: " + GameState.prisoners, MARGIN + 4, TOP + 56, 0xFFFFFF);
+        text(ctx, "Нас.: " + Realm.population + "/" + Realm.popCap(), MARGIN + 4, TOP + 36, 0xFFFFFF);
+        text(ctx, "Наука: " + Realm.science + " (+" + Realm.scienceIncome() + ")", MARGIN + 4, TOP + 46, 0x88CCFF);
+        text(ctx, "Сила армії: " + GameState.armyPower(), MARGIN + 4, TOP + 56, 0xFFFFFF);
+        text(ctx, "Полонених: " + GameState.prisoners, MARGIN + 4, TOP + 66, 0xFFFFFF);
 
         // ----- ліва панель: відносини -----
-        int ry = TOP + 74;
+        int ry = TOP + 86;
         panel(ctx, MARGIN, ry, LEFT_W, 70);
         text(ctx, "Відносини", MARGIN + 4, ry + 4, 0xFFD700);
         Integer[] order = new Integer[Countries.ALL.length - 1];

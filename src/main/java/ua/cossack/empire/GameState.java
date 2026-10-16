@@ -2,6 +2,7 @@ package ua.cossack.empire;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -38,6 +39,8 @@ public final class GameState {
     public static final boolean[] atWar = new boolean[World.FACTIONS.length];
     public static final boolean[] allied = new boolean[World.FACTIONS.length];
     public static final List<String> history = new ArrayList<>();
+    // війни між державами ШІ: ключ a*100+b (a<b) -> хід закінчення
+    private static final Map<Integer, Integer> aiWars = new HashMap<>();
 
     static {
         newGame();
@@ -53,10 +56,12 @@ public final class GameState {
         army[1] = 0;
         army[2] = 0;
         prisoners = 0;
+        Realm.reset();
         java.util.Arrays.fill(techDone, false);
         researching = null;
         researchLeft = 0;
         history.clear();
+        aiWars.clear();
         for (int f = 0; f < World.FACTIONS.length; f++) {
             relation[f] = f >= 1 && f <= LAST_STATE ? RNG.nextInt(61) - 30 : 0;
             atWar[f] = false;
@@ -81,6 +86,8 @@ public final class GameState {
                 if (p.owner == 0 && p.type.resource == r) total += p.production();
             }
         }
+        total += Realm.buildingIncome(r);
+        if (r == World.ResourceType.GOLD) total += Realm.taxIncome();
         return total * Math.max(0, 100 + resourceBonus(r)) / 100;
     }
 
@@ -124,14 +131,15 @@ public final class GameState {
         return !hasTech(t)
                 && researching == null
                 && (t.requires == null || hasTech(t.requires))
+                && Realm.epoch >= t.level
                 && stock.get(World.ResourceType.GOLD) >= t.gold
-                && stock.get(World.ResourceType.FOOD) >= t.food;
+                && Realm.science >= t.science;
     }
 
     public static void startResearch(Tech t) {
         if (!canResearch(t)) return;
         stock.merge(World.ResourceType.GOLD, -t.gold, Integer::sum);
-        stock.merge(World.ResourceType.FOOD, -t.food, Integer::sum);
+        Realm.science -= t.science;
         researching = t;
         researchLeft = t.turns;
         addLog("Почато дослідження: " + t.title);
@@ -158,6 +166,7 @@ public final class GameState {
             stock.merge(r, income(r), Integer::sum);
         }
         payUpkeep();
+        Realm.turn();
         researchTurn();
         turn++;
         if ((turn - 1) % SEASON_TURNS == 0) addLog("Настала пора року: " + SEASON_NAMES[season()]);
@@ -165,6 +174,7 @@ public final class GameState {
         updateUnrest();
         growGarrisons();
         enemyTurn();
+        aiTurn();
         randomEvent();
     }
 
@@ -183,7 +193,7 @@ public final class GameState {
     }
 
     private static void payUpkeep() {
-        stock.merge(World.ResourceType.FOOD, -upkeepFood(), Integer::sum);
+        stock.merge(World.ResourceType.FOOD, -upkeepFood() - Realm.popFood(), Integer::sum);
         stock.merge(World.ResourceType.GOLD, -upkeepGold(), Integer::sum);
         if (stock.get(World.ResourceType.FOOD) < 0) {
             stock.put(World.ResourceType.FOOD, 0);
@@ -197,6 +207,23 @@ public final class GameState {
         }
     }
 
+    /** Чи межує держава f з територіями гравця (війну оголошують лише сусіди). */
+    private static boolean touchesPlayer(int f) {
+        World.Province[] ps = world.provinces;
+        for (World.Province pr : ps) {
+            if (pr.owner != 0) continue;
+            for (int dr = -1; dr <= 1; dr++) {
+                for (int dc = -1; dc <= 1; dc++) {
+                    int c = pr.col + dc;
+                    int r = pr.row + dr;
+                    if (c < 0 || r < 0 || c >= World.COLS || r >= World.ROWS) continue;
+                    if (ps[r * World.COLS + c].owner == f) return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static void updateRelations() {
         for (int f = 1; f <= LAST_STATE; f++) {
             if (atWar[f]) {
@@ -204,7 +231,7 @@ public final class GameState {
             } else if (!allied[f]) {
                 if (relation[f] > 0) relation[f]--;
                 else if (relation[f] < 0) relation[f]++;
-                if (relation[f] < 10 && RNG.nextInt(100) < 5) {
+                if (relation[f] < 10 && RNG.nextInt(100) < 4 && touchesPlayer(f)) {
                     atWar[f] = true;
                     relation[f] = Math.max(-100, relation[f] - 20);
                     addLog(World.FACTIONS[f].name() + " оголосила війну!");
@@ -219,7 +246,7 @@ public final class GameState {
             if (atWar[f]) warAny = true;
         }
         boolean hungry = stock.get(World.ResourceType.FOOD) < 10;
-        int delta = (warAny ? 1 : 0) + (hungry ? 2 : 0) - 1 - (hasTech(Tech.COUNCIL) ? 1 : 0);
+        int delta = (warAny ? 1 : 0) + (hungry ? 2 : 0) - 1 - (hasTech(Tech.COUNCIL) ? 1 : 0) + Realm.taxUnrest();
         for (World.Province pr : world.provinces) {
             for (World.Point p : pr.points) {
                 if (p.owner != 0) continue;
@@ -272,12 +299,13 @@ public final class GameState {
             int k = RNG.nextInt(tPoint.size());
             World.Province prov = tProv.get(k);
             World.Point target = tPoint.get(k);
-            double att = (20 + turn * 6 + RNG.nextInt(40)) * (0.8 + RNG.nextDouble() * 0.4);
-            double def = (target.garrison + armyPower() / 12.0) * (1.0 + 0.1 * (target.level - 1))
-                    * (hasTech(Tech.FORTS) ? 1.15 : 1.0)
+            double att = (15 + turn * 2.5 + RNG.nextInt(25)) * (0.8 + RNG.nextDouble() * 0.4);
+            double def = (target.garrison + armyPower() / 2.0) * (1.0 + 0.1 * (target.level - 1))
+                    * (hasTech(Tech.FORTS) ? 1.15 : 1.0) * (hasTech(Tech.CASTLES) ? 1.15 : 1.0)
+                    * Realm.wallsMult(prov)
                     * (0.8 + RNG.nextDouble() * 0.4);
             String where = target.type.label + " " + target.name;
-            desert(0.08);
+            desert(0.04);
             if (att > def) {
                 target.owner = f;
                 target.garrison = 4;
@@ -291,9 +319,79 @@ public final class GameState {
         }
     }
 
+    // ---------- війни між іншими державами ----------
+
+    private static boolean isState(int o) {
+        return o >= 1 && o <= LAST_STATE;
+    }
+
+    private static World.Province neighborProvince(World.Province pr) {
+        int c = pr.col + RNG.nextInt(3) - 1;
+        int r = pr.row + RNG.nextInt(3) - 1;
+        if (c < 0 || r < 0 || c >= World.COLS || r >= World.ROWS) return null;
+        return world.provinces[r * World.COLS + c];
+    }
+
+    private static void aiTurn() {
+        aiWars.values().removeIf(end -> end <= turn);
+
+        // нова війна між сусідами
+        if (RNG.nextInt(100) < 30) {
+            for (int t = 0; t < 60; t++) {
+                World.Province pr = world.provinces[RNG.nextInt(world.provinces.length)];
+                World.Province q = neighborProvince(pr);
+                if (q == null || !isState(pr.owner) || !isState(q.owner) || pr.owner == q.owner) continue;
+                int a = Math.min(pr.owner, q.owner);
+                int b = Math.max(pr.owner, q.owner);
+                int key = a * 100 + b;
+                if (aiWars.containsKey(key)) break;
+                aiWars.put(key, turn + 10 + RNG.nextInt(20));
+                if (pr.explored || q.explored) {
+                    addLog(World.FACTIONS[pr.owner].name() + " воює з " + World.FACTIONS[q.owner].name());
+                }
+                break;
+            }
+        }
+        if (aiWars.isEmpty()) return;
+
+        int[] size = new int[World.FACTIONS.length];
+        for (World.Province pr : world.provinces) size[pr.owner]++;
+
+        for (int key : new ArrayList<>(aiWars.keySet())) {
+            if (RNG.nextInt(100) >= 60) continue;
+            int att = RNG.nextBoolean() ? key / 100 : key % 100;
+            int def = att == key / 100 ? key % 100 : key / 100;
+            // шукаємо кордон: провінція нападника поруч з провінцією захисника
+            for (int t = 0; t < 120; t++) {
+                World.Province pr = world.provinces[RNG.nextInt(world.provinces.length)];
+                if (pr.owner != att) continue;
+                World.Province q = neighborProvince(pr);
+                if (q == null || q.owner != def) continue;
+                List<World.Point> own = new ArrayList<>();
+                for (World.Point p : q.points) {
+                    if (p.owner == def) own.add(p);
+                }
+                if (own.isEmpty()) continue;
+                double chance = (size[att] + 1.0) / (size[att] + size[def] + 2.0);
+                if (RNG.nextDouble() < chance) {
+                    boolean whole = RNG.nextInt(100) < 60;
+                    for (World.Point p : whole ? own : own.subList(0, 1)) {
+                        p.owner = att;
+                        p.garrison = 4;
+                    }
+                    q.recalcOwner();
+                    if (q.explored) {
+                        addLog(World.FACTIONS[att].name() + " захопила " + q.name + " у " + World.FACTIONS[def].name());
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     private static void randomEvent() {
         if (RNG.nextInt(100) >= 35) return;
-        switch (RNG.nextInt(5)) {
+        switch (RNG.nextInt(8)) {
             case 0 -> {
                 if (allied[Countries.CRIMEA]) return;
                 int g = Math.min(stock.get(World.ResourceType.GOLD), 30);
@@ -316,6 +414,20 @@ public final class GameState {
                 stock.merge(World.ResourceType.FOOD, 40, Integer::sum);
                 addLog("Добрий урожай: +40 їжі");
             }
+            case 5 -> {
+                int g = 25 + 8 * Realm.count(Building.MARKET);
+                stock.merge(World.ResourceType.GOLD, g, Integer::sum);
+                addLog("Торговий бум: +" + g + " золота");
+            }
+            case 6 -> {
+                stock.merge(World.ResourceType.IRON, 25, Integer::sum);
+                addLog("Відкрито родовище: +25 заліза");
+            }
+            case 7 -> {
+                int lost = Realm.population / 12;
+                Realm.population = Math.max(30, Realm.population - lost);
+                addLog("Епідемія: -" + lost + " населення");
+            }
             default -> {
                 for (int t = 0; t < 40; t++) {
                     World.Province pr = world.provinces[RNG.nextInt(world.provinces.length)];
@@ -334,9 +446,10 @@ public final class GameState {
 
     // ---------- покращення ----------
 
-    public static int costGold(World.Point p) { return 40 * p.level; }
-    public static int costWood(World.Point p) { return 15 * p.level; }
-    public static int costIron(World.Point p) { return 5 * p.level; }
+    public static int costGold(World.Point p) { return cheaper(40 * p.level); }
+    public static int costWood(World.Point p) { return cheaper(15 * p.level); }
+    public static int costIron(World.Point p) { return cheaper(5 * p.level); }
+    private static int cheaper(int v) { return hasTech(Tech.ROADS) ? (int) Math.ceil(v * 0.8) : v; }
 
     public static boolean canUpgrade(World.Point p) {
         return p.owner == 0
@@ -420,6 +533,7 @@ public final class GameState {
     public static int armyPower() {
         int s = 0;
         for (int i = 0; i < army.length; i++) s += army[i] * UNIT_POWER[i];
+        s += Realm.armyBonus();
         return hasTech(Tech.DRILL) ? s * 115 / 100 : s;
     }
 

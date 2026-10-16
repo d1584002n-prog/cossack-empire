@@ -103,6 +103,7 @@ public final class World {
         public int owner;
         public int tx;
         public int ty;
+        public final java.util.EnumSet<Building> buildings = java.util.EnumSet.noneOf(Building.class);
         public boolean explored;
         public Terrain terrain = Terrain.PLAINS;
         public boolean river;
@@ -424,17 +425,18 @@ public final class World {
             switch (ter) {
                 case WATER -> b = TileAtlas.WATER_DEEP;
                 case PLAINS -> {
-                    b = r < 28 ? TileAtlas.TEXGRASS + rnd.nextInt(3) : TileAtlas.GRASS_L;
+                    b = r < 45 ? TileAtlas.TEXGRASS + rnd.nextInt(3) : TileAtlas.GRASS_L;
                     if (r > 94) o = TileAtlas.TREE1 + rnd.nextInt(3);
+                    else if (r > 91) o = TileAtlas.BUSH1 + rnd.nextInt(2);
                     else if (r > 84) o = TileAtlas.WHEAT1 + rnd.nextInt(3);
                 }
                 case MEADOW -> {
-                    b = r < 35 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
+                    b = r < 50 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
                     if (r > 92) o = TileAtlas.TREE1 + rnd.nextInt(3);
                     else if (r > 82) o = TileAtlas.WHEAT1 + rnd.nextInt(3);
                 }
                 case FOREST -> {
-                    b = r < 25 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
+                    b = r < 40 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
                     int q = rnd.nextInt(100);
                     if (q < 62) o = q < 20 ? TileAtlas.PINE : TileAtlas.TREE1 + rnd.nextInt(3);
                 }
@@ -555,6 +557,29 @@ public final class World {
                 p.px = t % T;
                 p.py = t / T;
                 over[t] = 0;
+                if (pr.terrain != Terrain.WATER) {
+                    // стежка від будівлі до центру провінції
+                    line(p.px, p.py, sxx, syy, (x, y) -> {
+                        int q = y * T + x;
+                        if (!waterTile(q) && base[q] > TileAtlas.SHORE1) {
+                            base[q] = (byte) TileAtlas.SAND;
+                            over[q] = 0;
+                        }
+                    });
+                    // поля навколо сіл і міст
+                    if (p.type == PointType.TOWN || p.type == PointType.VILLAGE) {
+                        for (int fy = -2; fy <= 2; fy++) {
+                            for (int fx = -2; fx <= 2; fx++) {
+                                int ax = p.px + fx;
+                                int ay = p.py + fy;
+                                if (ax < 0 || ay < 0 || ax >= T || ay >= T || (fx == 0 && fy == 0)) continue;
+                                int q = ay * T + ax;
+                                if (provOf[q] != i || waterTile(q) || base[q] <= TileAtlas.SAND) continue;
+                                if (rnd.nextInt(100) < 38) over[q] = (byte) (TileAtlas.WHEAT1 + rnd.nextInt(3));
+                            }
+                        }
+                    }
+                }
             }
         }
     }
