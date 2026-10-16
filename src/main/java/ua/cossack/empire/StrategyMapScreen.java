@@ -10,15 +10,15 @@ import net.minecraft.client.render.RenderLayer;
 public class StrategyMapScreen extends Screen {
     private static final float SQ3 = 1.7320508f;
     private static final int TOP = 34;
-    private static final int BOTTOM = 66;
+    private static final int BOTTOM = 72;
     private static final int MARGIN = 6;
     private static final int GAP = 6;
     private static final int LEFT_W = 96;
     private static final int RIGHT_W = 176;
     private static final int ROW_H = 12;
-    private static final int MINI = 2;
+    private static final int MINI_SIZE = 88;
     private static final int FOG_COLOR = 0xFF404040;
-    private static final float MAX_ZOOM = 10f;
+    private static final float MAX_ZOOM = 14f;
     private static final int ICON_SRC = 32; // розмір PNG-іконок у ресурсах
 
     private static final String[] MENU = {"Армія", "Міста", "Дипломатія", "Економіка", "Технології"};
@@ -36,6 +36,9 @@ public class StrategyMapScreen extends Screen {
     private double moved = 0;
     // За замовчуванням карта виглядає суцільною; внутрішню гекс-сітку можна ввімкнути кнопкою #.
     private boolean showHexGrid = true;
+    // політична карта: країни суцільним кольором (перемикач кнопкою П)
+    private boolean politicalMode = false;
+    private static final Building[] BLD = Building.values();
 
     public StrategyMapScreen() {
         super(Text.literal("Козацька Держава"));
@@ -43,7 +46,7 @@ public class StrategyMapScreen extends Screen {
 
     /** Старт: наближений вид на територію гравця. */
     private void resetView() {
-        zoom = 4f;
+        zoom = 5f;
         float ts = tileSize();
         World.Province c = GameState.world.provinces[World.startRow() * World.COLS + World.startCol()];
         panX = mapW() / 2f - (c.tx + 0.5f) * ts;
@@ -54,6 +57,8 @@ public class StrategyMapScreen extends Screen {
     @Override
     protected void init() {
         resetView();
+        addDrawableChild(ButtonWidget.builder(Text.literal("Журнал"), b -> this.client.setScreen(new JournalScreen(this)))
+                .dimensions(MARGIN, TOP + 86 + 74, LEFT_W, 16).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Нова гра"), b -> {
                     GameState.newGame();
                     selected = -1;
@@ -72,7 +77,7 @@ public class StrategyMapScreen extends Screen {
             ButtonWidget b = ButtonWidget.builder(Text.empty(), btn -> openTab(idx))
                     .dimensions(MARGIN + i * 73, this.height - 26, 70, 20)
                     .build();
-            b.active = i == 0 || i == 2;
+            b.active = true;
             addDrawableChild(b);
         }
 
@@ -116,8 +121,8 @@ public class StrategyMapScreen extends Screen {
     private int rightX() { return this.width - RIGHT_W - MARGIN; }
     private int mapW() { return rightX() - GAP - mapX(); }
     private int mapH() { return this.height - TOP - BOTTOM; }
-    private int miniW() { return World.COLS * MINI; }
-    private int miniH() { return World.ROWS * MINI; }
+    private int miniW() { return MINI_SIZE; }
+    private int miniH() { return MINI_SIZE; }
 
     /** Розмір тайла в екранних px при zoom = 1 (вся карта вміщається у вікно). */
     private float baseT() {
@@ -214,6 +219,27 @@ public class StrategyMapScreen extends Screen {
     }
 
     private final int[] tintCache = new int[World.COLS * World.ROWS];
+    private final int[] polCache = new int[World.COLS * World.ROWS];
+
+    private int politicalColor(World.Province pr) {
+        if (!pr.explored || pr.terrain == World.Terrain.WATER) return FOG_COLOR;
+        int c = mix(0xFFE8D9A8, World.FACTIONS[pr.owner].color(), 0.72f);
+        return switch (pr.terrain) {
+            case MOUNTAIN -> mix(c, 0xFF5A4A3A, 0.22f);
+            case FOREST -> mix(c, 0xFF2F4A2A, 0.14f);
+            case STEPPE -> mix(c, 0xFFE8D9A8, 0.2f);
+            default -> c;
+        };
+    }
+
+    private int seaColor(int baseId) {
+        return switch (baseId) {
+            case 0 -> 0xFF8792A0;
+            case 1 -> 0xFF95A0AD;
+            case 2 -> 0xFFA2ACB8;
+            default -> 0xFFB0B9C2;
+        };
+    }
 
     private void edge(DrawContext ctx, int a, int b, int ex, int ey, int th, int len,
                       boolean vertical, boolean grid) {
@@ -228,15 +254,24 @@ public class StrategyMapScreen extends Screen {
             ca = 0xFFFFFFFF;
             cb = 0xFFFFFFFF;
             w = th + 1;
-        } else if (!pa.explored || !pb.explored
-                || pa.terrain == World.Terrain.WATER || pb.terrain == World.Terrain.WATER) {
+        } else if (!pa.explored || !pb.explored) {
             return;
+        } else if (pa.terrain == World.Terrain.WATER || pb.terrain == World.Terrain.WATER) {
+            if (!politicalMode || pa.terrain == pb.terrain) return;
+            ca = 0xFF4A3A28; // берегова лінія
+            cb = 0xFF4A3A28;
+            w = Math.max(1, th / 2);
         } else if (pa.owner != pb.owner) {
-            ca = 0xFF000000 | (World.FACTIONS[pa.owner].color() & 0xFFFFFF);
-            cb = 0xFF000000 | (World.FACTIONS[pb.owner].color() & 0xFFFFFF);
+            if (politicalMode) {
+                ca = 0xFF2E1F0E;
+                cb = 0xFF2E1F0E;
+            } else {
+                ca = 0xFF000000 | (World.FACTIONS[pa.owner].color() & 0xFFFFFF);
+                cb = 0xFF000000 | (World.FACTIONS[pb.owner].color() & 0xFFFFFF);
+            }
         } else if (grid) {
-            ca = 0x30FFFFFF;
-            cb = 0x30FFFFFF;
+            ca = politicalMode ? 0x40301C0A : 0x30FFFFFF;
+            cb = ca;
         } else {
             return;
         }
@@ -258,6 +293,7 @@ public class StrategyMapScreen extends Screen {
         for (int i = 0; i < provinces.length; i++) {
             World.Province pr = provinces[i];
             tintCache[i] = pr.explored && pr.terrain != World.Terrain.WATER ? ownerTint(pr) : 0xFFFFFFFF;
+            if (politicalMode) polCache[i] = politicalColor(pr);
         }
         // LOD: на малому масштабі беремо кожен 2-й або 4-й тайл
         int k = ts < 2.6f ? 4 : ts < 5f ? 2 : 1;
@@ -284,6 +320,16 @@ public class StrategyMapScreen extends Screen {
                     ctx.fill(px, py, px + S, py + S, FOG_COLOR);
                     continue;
                 }
+                if (politicalMode) {
+                    int b = w.base[t];
+                    int col;
+                    if (pr.terrain == World.Terrain.WATER) col = seaColor(b);
+                    else if (b == TileAtlas.WATER_SHALLOW) col = 0xFF7FA8C8; // річка
+                    else col = polCache[pi];
+                    ctx.fill(px, py, px + S, py + S, col);
+                    if (pi == hovered) ctx.fill(px, py, px + S, py + S, 0x28FFFFFF);
+                    continue;
+                }
                 TileAtlas.draw(ctx, w.base[t], px, py, S, S, tintCache[pi]);
                 if (k == 1 && w.over[t] != 0) TileAtlas.draw(ctx, w.over[t], px, py, 16, 16, tintCache[pi]);
                 if (pi == hovered) ctx.fill(px, py, px + S, py + S, 0x28FFFFFF);
@@ -301,8 +347,8 @@ public class StrategyMapScreen extends Screen {
             }
         }
 
-        // будівлі точок і прапорці
-        if (ts >= 4f) {
+        // будівлі точок (на політичній карті — лише щити)
+        if (!politicalMode && ts >= 4f) {
             for (int i = 0; i < provinces.length; i++) {
                 World.Province pr = provinces[i];
                 if (!pr.explored) continue;
@@ -311,13 +357,6 @@ public class StrategyMapScreen extends Screen {
                     if (p.type == World.PointType.FISHERY) continue;
                     if (p.px < x0 - 1 || p.px > x1 + 1 || p.py < y0 - 1 || p.py > y1 + 1) continue;
                     TileAtlas.draw(ctx, TileAtlas.pointSprite(p), p.px * 16, p.py * 16, 16, 16, 0xFFFFFFFF);
-                    if (p.type == World.PointType.TOWN && ts >= 5.5f) {
-                        int fx = p.px * 16 + 11;
-                        int fy = p.py * 16 - 5;
-                        int flag = p.owner == 0 ? 0xFFD83A32 : World.FACTIONS[p.owner].color();
-                        ctx.fill(fx, fy, fx + 1, fy + 10, 0xFF3B2A14);
-                        ctx.fill(fx + 1, fy, fx + 7, fy + 4, flag);
-                    }
                     if (i == selected && j == selectedPoint) {
                         ctx.drawBorder(p.px * 16 - 1, p.py * 16 - 1, 18, 18, 0xFFFFFFFF);
                     }
@@ -345,9 +384,179 @@ public class StrategyMapScreen extends Screen {
         }
     }
 
+    @Override
+    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        ctx.fill(0, 0, this.width, this.height, 0xFF1F150B);
+        for (int y = 0; y < this.height; y += 5) {
+            ctx.fill(0, y, this.width, y + 1, 0x16000000);
+        }
+    }
+
+    /** Пергаментна рамка навколо карти з кутовими прикрасами. */
+    private void parchmentFrame(DrawContext ctx, int x1, int y1, int x2, int y2) {
+        int f = 4;
+        ctx.fill(x1 - f - 1, y1 - f - 1, x2 + f + 1, y2 + f + 1, 0xFF3B2A14);
+        ctx.fill(x1 - f, y1 - f, x2 + f, y2 + f, 0xFFD9C690);
+        ctx.drawBorder(x1 - f + 1, y1 - f + 1, (x2 - x1) + 2 * f - 2, (y2 - y1) + 2 * f - 2, 0xFF9B7B3C);
+        int[] cx = {x1 - f - 1, x2 + f - 4};
+        int[] cy = {y1 - f - 1, y2 + f - 4};
+        for (int a : cx) {
+            for (int b : cy) {
+                ctx.fill(a, b, a + 5, b + 5, 0xFF8A6A2E);
+                ctx.fill(a + 1, b + 1, a + 4, b + 4, 0xFFE9D9A4);
+            }
+        }
+        ctx.fill(x1 - 1, y1 - 1, x2 + 1, y2 + 1, 0xFF5A4122);
+    }
+
+    /** Гербовий щит 7x9 «пікселів» (по s px), малюнок залежить від pattern. */
+    private void drawShield(DrawContext ctx, int cx, int top, int s, int color, int pattern) {
+        int[] widths = {7, 7, 7, 7, 7, 5, 5, 3, 1};
+        int dark = 0xFF2A1A0A;
+        int light = 0xFFF5E6B8;
+        int col = 0xFF000000 | (color & 0xFFFFFF);
+        for (int r = 0; r < widths.length; r++) {
+            int w = widths[r] * s;
+            int x0 = cx - w / 2;
+            int y0 = top + r * s;
+            ctx.fill(x0 - 1, y0, x0 + w + 1, y0 + s, dark);
+        }
+        ctx.fill(cx - (7 * s) / 2 - 1, top - 1, cx + (7 * s) / 2 + 2, top, dark);
+        ctx.fill(cx - s / 2 - 1, top + 9 * s, cx - s / 2 + s + 1, top + 9 * s + 1, dark);
+        for (int r = 0; r < widths.length; r++) {
+            int w = widths[r] * s;
+            ctx.fill(cx - w / 2, top + r * s, cx - w / 2 + w, top + (r + 1) * s, col);
+        }
+        int mid = cx - s / 2;
+        switch (pattern) {
+            case 0 -> { // хрест
+                ctx.fill(mid, top + s, mid + s, top + 7 * s, light);
+                ctx.fill(cx - (5 * s) / 2, top + 3 * s, cx + (5 * s) / 2 + (s % 2), top + 4 * s, light);
+            }
+            case 1 -> ctx.fill(cx - (7 * s) / 2, top + 3 * s, cx + (7 * s) / 2 + (s % 2), top + 5 * s, light); // смуга
+            case 2 -> { // шеврон
+                ctx.fill(mid, top + 2 * s, mid + s, top + 3 * s, light);
+                ctx.fill(mid - s, top + 3 * s, mid + 2 * s, top + 4 * s, light);
+                ctx.fill(mid - 2 * s, top + 4 * s, mid + 3 * s, top + 5 * s, light);
+            }
+            case 3 -> ctx.fill(mid - s, top + 2 * s, mid + 2 * s, top + 5 * s, light); // коло
+            default -> ctx.fill(mid, top, mid + s, top + 8 * s, light); // вертикальна смуга
+        }
+    }
+
+    private int shieldColor(int owner) {
+        return owner == 0 ? 0xFFD83A32 : World.FACTIONS[owner].color();
+    }
+
+    /** Гербові щити на столицях держав і на містах. */
+    private void drawShields(DrawContext ctx) {
+        World w = GameState.world;
+        float ts = tileSize();
+        int mx1 = mapX();
+        int my1 = TOP;
+        int mx2 = mapX() + mapW();
+        int my2 = TOP + mapH();
+        if (ts >= 5f) {
+            int s = 1;
+            for (World.Province pr : w.provinces) {
+                if (!pr.explored) continue;
+                for (World.Point p : pr.points) {
+                    if (p.type != World.PointType.TOWN) continue;
+                    int sx = Math.round(mapX() + panX + (p.px + 0.5f) * ts);
+                    int sy = Math.round(TOP + panY + (p.py - 0.2f) * ts);
+                    if (sx < mx1 - 8 || sx > mx2 + 8 || sy < my1 - 12 || sy > my2 + 4) continue;
+                    drawShield(ctx, sx, sy - 9 * s, s, shieldColor(p.owner), Math.floorMod(p.owner, 5));
+                }
+            }
+        }
+        int s = ts < 4f ? 2 : 3;
+        for (int f = 0; f < Countries.ALL.length; f++) {
+            World.Province pr = w.provinces[World.capitalIndex(f)];
+            if (!pr.explored) continue;
+            int sx = Math.round(mapX() + panX + (pr.tx + 0.5f) * ts);
+            int sy = Math.round(TOP + panY + (pr.ty + 0.5f) * ts);
+            if (sx < mx1 - 12 || sx > mx2 + 12 || sy < my1 - 16 || sy > my2 + 12) continue;
+            drawShield(ctx, sx, sy - 5 * s, s, shieldColor(f), Math.floorMod(f, 5));
+        }
+    }
+
+    // ---------- нижня панель будівель ----------
+
+    private int stripX() { return mapX(); }
+    private int stripY() { return this.height - 64; }
+    private int slotSize() { return Math.max(14, Math.min(22, (mapW() - 104) / BLD.length - 2)); }
+    private int slotX(int i) { return stripX() + 98 + i * (slotSize() + 2); }
+
+    private World.Province buildProvince() {
+        if (selected < 0) return null;
+        World.Province pr = GameState.world.provinces[selected];
+        return Realm.isMine(pr) ? pr : null;
+    }
+
+    private int buildingIcon(Building b) {
+        return switch (b) {
+            case FARM -> TileAtlas.WHEAT3;
+            case MARKET -> TileAtlas.MARKET;
+            case MINE -> TileAtlas.MINE0;
+            case WALLS -> TileAtlas.TOWER;
+            case BARRACKS -> TileAtlas.HOUSE0 + 5;
+            case LIBRARY -> TileAtlas.CHAPEL;
+            case PORT -> TileAtlas.DOCK0;
+            case FORGE -> TileAtlas.WORKSHOP1;
+        };
+    }
+
+    private void drawBuildStrip(DrawContext ctx, int mouseX, int mouseY) {
+        int x = stripX();
+        int y = stripY();
+        panel(ctx, x, y, mapW(), 24);
+        World.Province pr = buildProvince();
+        if (pr == null) {
+            text(ctx, textRenderer.trimToWidth("Обери свою провінцію", 90), x + 5, y + 8, 0xAA9966);
+        } else {
+            text(ctx, textRenderer.trimToWidth(pr.name, 90), x + 5, y + 3, 0xFFD700);
+            text(ctx, Realm.tierName(pr) + " " + pr.buildings.size() + "/" + BLD.length, x + 5, y + 13, 0xE9D9A4);
+        }
+        int ss = slotSize();
+        String tip = null;
+        int tipX = 0;
+        for (int i = 0; i < BLD.length; i++) {
+            Building b = BLD[i];
+            int sx = slotX(i);
+            int sy = y + 2;
+            boolean built = pr != null && pr.buildings.contains(b);
+            boolean can = pr != null && Realm.canBuild(pr, b);
+            ctx.fill(sx, sy, sx + ss, sy + ss, 0xFF3A2A18);
+            TileAtlas.draw(ctx, buildingIcon(b), sx + 1, sy + 1, ss - 2, ss - 2, 0xFFFFFFFF);
+            if (!built) ctx.fill(sx + 1, sy + 1, sx + ss - 1, sy + ss - 1, can ? 0x30000000 : 0xB0000000);
+            ctx.drawBorder(sx, sy, ss, ss, built ? 0xFF55AA55 : can ? 0xFFD9B04A : 0xFF5A4122);
+            if (mouseX >= sx && mouseX < sx + ss && mouseY >= sy && mouseY < sy + ss) {
+                tipX = sx;
+                if (built) tip = b.label + ": " + b.effect;
+                else if (b.epoch > Realm.epoch) tip = b.label + " (потрібна епоха " + b.epoch + ")";
+                else if (pr != null && b == Building.PORT && !Realm.coastal(pr)) tip = b.label + " (потрібне море)";
+                else tip = b.label + ": " + b.effect + " — " + Realm.costGold(b) + "з " + Realm.costWood(b) + "д"
+                        + (Realm.costIron(b) > 0 ? " " + Realm.costIron(b) + "з." : "");
+            }
+        }
+        if (tip != null) {
+            int tw = textRenderer.getWidth(tip) + 8;
+            int tx = Math.max(MARGIN, Math.min(tipX, this.width - tw - MARGIN));
+            panel(ctx, tx, y - 14, tw, 13);
+            text(ctx, tip, tx + 4, y - 11, 0xFFE9B8);
+        }
+    }
+
+    private int miniColor(World.Province pr) {
+        if (!pr.explored) return FOG_COLOR;
+        if (pr.terrain == World.Terrain.WATER) return 0xFF9AA4AE;
+        return mix(0xFFE8D9A8, World.FACTIONS[pr.owner].color(), 0.85f);
+    }
+
     private void panel(DrawContext ctx, int x, int y, int w, int h) {
-        ctx.fill(x, y, x + w, y + h, 0x99000000);
-        ctx.drawBorder(x, y, w, h, 0xFF6B5A2E);
+        ctx.fill(x, y, x + w, y + h, 0xEE2A1C10);
+        ctx.drawBorder(x, y, w, h, 0xFF9B7B3C);
+        ctx.drawBorder(x + 1, y + 1, w - 2, h - 2, 0xFF4A3418);
     }
 
     private void text(DrawContext ctx, String s, int x, int y, int color) {
@@ -384,7 +593,7 @@ public class StrategyMapScreen extends Screen {
 
         int zy = TOP + mapH() - 17;
         if (my >= zy && my < zy + 15) {
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < 5; k++) {
                 int bx = mapX() + 3 + k * 17;
                 if (mx >= bx && mx < bx + 15) {
                     double cx = mapX() + mapW() / 2.0;
@@ -398,8 +607,10 @@ public class StrategyMapScreen extends Screen {
                         panX = 0f;
                         panY = 0f;
                         clampPan();
-                    } else {
+                    } else if (k == 3) {
                         showHexGrid = !showHexGrid;
+                    } else {
+                        politicalMode = !politicalMode;
                     }
                     return true;
                 }
@@ -414,6 +625,18 @@ public class StrategyMapScreen extends Screen {
             panY = mapH() / 2f - fy * totalH();
             clampPan();
             return true;
+        }
+
+        World.Province bp = buildProvince();
+        if (bp != null) {
+            for (int i = 0; i < BLD.length; i++) {
+                int sx = slotX(i);
+                int sy = stripY() + 2;
+                if (mx >= sx && mx < sx + slotSize() && my >= sy && my < sy + slotSize()) {
+                    Realm.build(bp, BLD[i]);
+                    return true;
+                }
+            }
         }
 
         if (inMap(mx, my)) {
@@ -528,6 +751,8 @@ public class StrategyMapScreen extends Screen {
                 + "   " + res(World.ResourceType.WOOD);
         String line2 = res(World.ResourceType.IRON) + "   " + res(World.ResourceType.POWDER)
                 + "   " + res(World.ResourceType.HORSES);
+        int barW = Math.max(textRenderer.getWidth(line1), textRenderer.getWidth(line2)) + 16;
+        panel(ctx, this.width / 2 - barW / 2, 2, barW, 28);
         ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(line1), this.width / 2, 6, 0xFFD700);
         ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(line2), this.width / 2, 18, 0xFFD700);
 
@@ -575,34 +800,39 @@ public class StrategyMapScreen extends Screen {
         int vx2 = mapX() + mapW();
         int vy2 = TOP + mapH();
 
-        ctx.fill(vx1 - 1, vy1 - 1, vx2 + 1, vy2 + 1, 0xFF6B5A2E);
+        parchmentFrame(ctx, vx1, vy1, vx2, vy2);
         ctx.fill(vx1, vy1, vx2, vy2, 0xFF0B0B0B);
         ctx.enableScissor(vx1, vy1, vx2, vy2);
 
         drawWorld(ctx, hovered);
+        drawShields(ctx);
         drawLabels(ctx, hovered);
         ctx.disableScissor();
+        drawBuildStrip(ctx, mouseX, mouseY);
 
         // ----- кнопки масштабу -----
-        String[] zl = {"+", "-", "0", "#"};
+        String[] zl = {"+", "-", "0", "#", "П"};
         int zy = TOP + mapH() - 17;
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 5; k++) {
             int bx = mapX() + 3 + k * 17;
-            ctx.fill(bx, zy, bx + 15, zy + 15, 0xFF000000);
-            ctx.drawBorder(bx, zy, 15, 15, 0xFF6B5A2E);
+            ctx.fill(bx, zy, bx + 15, zy + 15, 0xFF2A1C10);
+            ctx.drawBorder(bx, zy, 15, 15, 0xFF9B7B3C);
+            boolean on = (k == 3 && showHexGrid) || (k == 4 && politicalMode);
             ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(zl[k]), bx + 8, zy + 4,
-                    k == 3 && showHexGrid ? 0xFFFF55 : 0xFFFFFF);
+                    on ? 0xFFFF55 : 0xFFFFFF);
         }
-        text(ctx, String.format("x%.1f", zoom), mapX() + 74, zy + 4, 0xDDDDDD);
+        text(ctx, String.format("x%.1f", zoom), mapX() + 91, zy + 4, 0xDDDDDD);
 
         // ----- мінікарта -----
         int rx = rightX();
         panel(ctx, rx - 2, TOP - 2, miniW() + 4, miniH() + 4);
         for (int i = 0; i < provinces.length; i++) {
             World.Province pr = provinces[i];
-            int x = rx + pr.col * MINI;
-            int y = TOP + pr.row * MINI;
-            ctx.fill(x, y, x + MINI, y + MINI, provColor(pr));
+            int x = rx + pr.col * MINI_SIZE / World.COLS;
+            int y = TOP + pr.row * MINI_SIZE / World.ROWS;
+            int x2 = rx + (pr.col + 1) * MINI_SIZE / World.COLS;
+            int y2 = TOP + (pr.row + 1) * MINI_SIZE / World.ROWS;
+            ctx.fill(x, y, Math.max(x2, x + 1), Math.max(y2, y + 1), miniColor(pr));
         }
         float tw = totalW();
         float th = totalH();
@@ -689,12 +919,9 @@ public class StrategyMapScreen extends Screen {
 
         // ----- журнал подій -----
         int logW = rightX() - GAP - MARGIN;
-        for (int k = 2; k >= 0; k--) {
-            String s = GameState.logLine(k);
-            if (!s.isEmpty()) {
-                text(ctx, textRenderer.trimToWidth(s, logW), MARGIN, this.height - 38 - k * 12,
-                        k == 0 ? 0xFFD700 : 0xAAAAAA);
-            }
+        String last = GameState.logLine(0);
+        if (!last.isEmpty()) {
+            text(ctx, textRenderer.trimToWidth(last, logW), MARGIN, this.height - 38, 0xFFD700);
         }
     }
 

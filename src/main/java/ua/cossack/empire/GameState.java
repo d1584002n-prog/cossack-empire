@@ -39,6 +39,8 @@ public final class GameState {
     public static final boolean[] atWar = new boolean[World.FACTIONS.length];
     public static final boolean[] allied = new boolean[World.FACTIONS.length];
     public static final List<String> history = new ArrayList<>();
+    public static final List<String> journal = new ArrayList<>();
+    public static int attacksLeft;
     // війни між державами ШІ: ключ a*100+b (a<b) -> хід закінчення
     private static final Map<Integer, Integer> aiWars = new HashMap<>();
 
@@ -61,7 +63,9 @@ public final class GameState {
         researching = null;
         researchLeft = 0;
         history.clear();
+        journal.clear();
         aiWars.clear();
+        attacksLeft = attacksPerTurn();
         for (int f = 0; f < World.FACTIONS.length; f++) {
             relation[f] = f >= 1 && f <= LAST_STATE ? RNG.nextInt(61) - 30 : 0;
             atWar[f] = false;
@@ -72,6 +76,8 @@ public final class GameState {
     public static void addLog(String s) {
         history.add(s);
         while (history.size() > 8) history.remove(0);
+        journal.add("Хід " + turn + ": " + s);
+        while (journal.size() > 400) journal.remove(0);
     }
 
     public static String logLine(int fromEnd) {
@@ -165,6 +171,7 @@ public final class GameState {
         for (World.ResourceType r : World.ResourceType.values()) {
             stock.merge(r, income(r), Integer::sum);
         }
+        attacksLeft = attacksPerTurn();
         payUpkeep();
         Realm.turn();
         researchTurn();
@@ -194,7 +201,7 @@ public final class GameState {
 
     private static void payUpkeep() {
         stock.merge(World.ResourceType.FOOD, -upkeepFood() - Realm.popFood(), Integer::sum);
-        stock.merge(World.ResourceType.GOLD, -upkeepGold(), Integer::sum);
+        stock.merge(World.ResourceType.GOLD, -upkeepGold() - Realm.adminCost(), Integer::sum);
         if (stock.get(World.ResourceType.FOOD) < 0) {
             stock.put(World.ResourceType.FOOD, 0);
             desert(0.2);
@@ -246,7 +253,7 @@ public final class GameState {
             if (atWar[f]) warAny = true;
         }
         boolean hungry = stock.get(World.ResourceType.FOOD) < 10;
-        int delta = (warAny ? 1 : 0) + (hungry ? 2 : 0) - 1 - (hasTech(Tech.COUNCIL) ? 1 : 0) + Realm.taxUnrest();
+        int delta = (warAny ? 1 : 0) + (hungry ? 2 : 0) - 1 - (hasTech(Tech.COUNCIL) ? 1 : 0) + Realm.taxUnrest() + Realm.sprawlUnrest();
         for (World.Province pr : world.provinces) {
             for (World.Point p : pr.points) {
                 if (p.owner != 0) continue;
@@ -551,8 +558,12 @@ public final class GameState {
         return p.owner == REBELS || (p.owner >= 1 && p.owner <= LAST_STATE && atWar[p.owner]);
     }
 
+    public static int attacksPerTurn() {
+        return 3 + Realm.count(Building.BARRACKS) / 4;
+    }
+
     public static boolean canAttack(World.Province pr, World.Point p) {
-        return pr.explored && p.owner != 0 && atWarWith(p) && armyPower() > 0 && isNearMine(pr);
+        return attacksLeft > 0 && pr.explored && p.owner != 0 && atWarWith(p) && armyPower() > 0 && isNearMine(pr);
     }
 
     private static void revealAroundMine() {
@@ -570,19 +581,23 @@ public final class GameState {
 
     public static void attack(World.Province pr, World.Point p) {
         if (!canAttack(pr, p)) return;
-        double att = armyPower() * (0.8 + RNG.nextDouble() * 0.4);
-        double def = p.garrison * (1.0 + 0.15 * (p.level - 1)) * (0.8 + RNG.nextDouble() * 0.4);
+        attacksLeft--;
+        // у похід іде лише частина армії, міста захищені краще
+        double att = armyPower() * 0.6 * (0.8 + RNG.nextDouble() * 0.4);
+        double def = p.garrison * (1.0 + 0.15 * (p.level - 1)) * (p.type == World.PointType.TOWN ? 1.4 : 1.0)
+                * (1.0 + Realm.ownedProvinces() / 40.0) // чим більша держава, тим важче завойовувати
+                * (0.8 + RNG.nextDouble() * 0.4);
         String where = p.type.label + " " + p.name;
         int oldOwner = p.owner;
 
         if (att > def) {
-            double loss = Math.min(0.9, def / att * 0.6);
+            double loss = Math.max(0.10, Math.min(0.9, def / att * 0.9));
             desert(loss);
-            int caught = Math.max(1, p.garrison / 4);
+            int caught = Math.max(1, p.garrison / 6);
             prisoners += caught;
             p.owner = 0;
             p.garrison = 3;
-            p.unrest = 25;
+            p.unrest = 35;
             pr.recalcOwner();
             revealAroundMine();
             if (oldOwner >= 1 && oldOwner <= LAST_STATE) {
@@ -614,8 +629,9 @@ public final class GameState {
 
     public static void enlistPrisoners() {
         if (prisoners <= 0) return;
-        army[0] += prisoners;
-        addLog("Полонені вступили до війська: +" + prisoners);
+        int joined = Math.max(1, prisoners / 4);
+        army[0] += joined;
+        addLog("До війська вступила чверть полонених: +" + joined);
         prisoners = 0;
     }
 

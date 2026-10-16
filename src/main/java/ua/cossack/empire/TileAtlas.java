@@ -35,7 +35,7 @@ public final class TileAtlas {
     public static final int WORKSHOP0 = 49, WORKSHOP1 = 50;
     public static final int MINE0 = 51, MINE1 = 52;
     public static final int DOCK0 = 53, DOCK1 = 54;
-    public static final int MARKET = 55, CHAPEL = 56;
+    public static final int MARKET = 55, CHAPEL = 56, TOWER = 57;
 
     public static final int COUNT = 64;
     private static final int[] U = new int[COUNT];
@@ -89,6 +89,7 @@ public final class TileAtlas {
         set(DOCK1, 16, 192);
         set(MARKET, 64, 208);
         set(CHAPEL, 192, 128);
+        set(TOWER, 176, 160);
     }
 
     public static boolean isWaterTile(int id) {

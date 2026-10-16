@@ -150,6 +150,24 @@ public final class Realm {
         return pr.buildings.contains(Building.WALLS) ? 1.25 : 1.0;
     }
 
+    public static int ownedProvinces() {
+        int n = 0;
+        for (World.Province pr : GameState.world.provinces) {
+            if (isMine(pr)) n++;
+        }
+        return n;
+    }
+
+    /** Чим більша держава, тим більше невдоволення: ~+1 за кожні 12 провінцій понад 18. */
+    public static int sprawlUnrest() {
+        return Math.max(0, (ownedProvinces() - 18) / 12);
+    }
+
+    /** Витрати на управління: 3 золота за кожну провінцію понад 20. */
+    public static int adminCost() {
+        return Math.max(0, ownedProvinces() - 20) * 3;
+    }
+
     public static int taxUnrest() {
         return taxLevel - 1;
     }

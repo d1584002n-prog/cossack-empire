@@ -7,14 +7,14 @@ import java.util.List;
 import java.util.Random;
 
 public final class World {
-    public static final int TILES = 128;   // карта 128 x 128 тайлів (16 px = 2048 x 2048 px)
+    public static final int TILES = 192;   // карта 192 x 192 тайлів (16 px = 3072 x 3072 px)
     public static final int PS = 4;        // середній розмір провінції: 4 x 4 тайли
     public static final int COLS = TILES / PS;
-    public static final int ROWS = TILES / PS; // 32 x 32 = 1024 провінції
+    public static final int ROWS = TILES / PS; // 48 x 48 = 2304 провінції
     // координати країн у Countries.java задані для сітки 16 x 11 — масштабуємо
     private static final int BASE_COLS = 16;
     private static final int BASE_ROWS = 11;
-    private static final double NS = 2.0; // масштаб шуму рельєфу
+    private static final double NS = 3.0; // масштаб шуму рельєфу
 
     private static int scCol(int c) {
         return Math.max(0, Math.min(COLS - 1, (int) Math.round((c + 0.5) * COLS / BASE_COLS - 0.5)));
@@ -22,6 +22,12 @@ public final class World {
 
     private static int scRow(int r) {
         return Math.max(0, Math.min(ROWS - 1, (int) Math.round((r + 0.5) * ROWS / BASE_ROWS - 0.5)));
+    }
+
+    /** Індекс провінції-столиці держави f (0 — Гетьманщина). */
+    public static int capitalIndex(int f) {
+        Countries.Country c = Countries.ALL[f];
+        return scRow(c.row()) * COLS + scCol(c.col());
     }
 
     public static int startCol() { return scCol(Countries.ALL[0].col()); }
@@ -268,10 +274,10 @@ public final class World {
         land.sort((a, b) -> Double.compare(elev[b], elev[a]));
         List<Integer> candidates = new ArrayList<>(land.subList(0, Math.max(1, land.size() / 5)));
         Collections.shuffle(candidates, rnd);
-        int sources = Math.min(14, candidates.size());
+        int sources = Math.min(22, candidates.size());
         for (int s = 0; s < sources; s++) {
             int cur = candidates.get(s);
-            for (int step = 0; step < 70; step++) {
+            for (int step = 0; step < 110; step++) {
                 isRiver[cur] = true;
                 if (terr[cur] == Terrain.WATER) break;
                 int best = -1;
