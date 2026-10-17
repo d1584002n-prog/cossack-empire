@@ -82,9 +82,9 @@ public class ArmyScreen extends Screen {
                         + GameState.upkeepFood() + ", Золото " + GameState.upkeepGold()),
                 this.width / 2, 26, 0xFFFFFF);
         ctx.drawCenteredTextWithShadow(textRenderer,
-                Text.literal("Флот: " + GameState.ships + " (місткість " + GameState.shipCap() + " на корабель, дальність "
+                Text.literal("Флот: " + GameState.ships + " (місткість " + GameState.shipCap() + ", дальність "
                         + GameState.seaRange() + ")"),
-                this.width / 2, 120 + 2, 0xAAD4FF);
+                this.width / 2, 36, 0xAAD4FF);
         ctx.drawCenteredTextWithShadow(textRenderer,
                 Text.literal("Полонені: " + GameState.prisoners + "   (викуп: +" + GameState.prisoners * 10 + " золота)"),
                 this.width / 2, 138, 0xFFD700);

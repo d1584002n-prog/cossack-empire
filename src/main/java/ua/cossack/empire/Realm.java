@@ -95,13 +95,65 @@ public final class Realm {
                 && GameState.stock.get(World.ResourceType.IRON) >= costIron(b);
     }
 
-    public static void build(World.Province pr, Building b) {
-        if (!canBuild(pr, b)) return;
+    private static int indexOf(World.Province pr) {
+        return pr.row * World.COLS + pr.col;
+    }
+
+    /** Чи можна поставити будівлю b на тайл провінції pr (суша, вільне місце, порт — біля води). */
+    public static boolean canPlace(World.Province pr, Building b, int tile) {
+        World w = GameState.world;
+        final int T = World.TILES;
+        if (tile < 0 || tile >= T * T || w.provOf[tile] != indexOf(pr)) return false;
+        if (w.base[tile] <= TileAtlas.SHORE1) return false; // вода чи річка
+        for (World.Point p : pr.points) {
+            if (p.py * T + p.px == tile) return false;
+        }
+        for (int t : pr.buildingTile.values()) {
+            if (t == tile) return false;
+        }
+        if (b == Building.PORT) {
+            int x = tile % T;
+            int y = tile / T;
+            int[] dx = {1, -1, 0, 0};
+            int[] dy = {0, 0, 1, -1};
+            for (int d = 0; d < 4; d++) {
+                int nx = x + dx[d];
+                int ny = y + dy[d];
+                if (nx >= 0 && ny >= 0 && nx < T && ny < T && w.base[ny * T + nx] <= TileAtlas.SHORE1) return true;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /** Будує b саме на тайлі tile (гравець сам обирає місце). */
+    public static boolean buildAt(World.Province pr, Building b, int tile) {
+        if (!canBuild(pr, b) || !canPlace(pr, b, tile)) return false;
         GameState.stock.merge(World.ResourceType.GOLD, -costGold(b), Integer::sum);
         GameState.stock.merge(World.ResourceType.WOOD, -costWood(b), Integer::sum);
         GameState.stock.merge(World.ResourceType.IRON, -costIron(b), Integer::sum);
         pr.buildings.add(b);
+        pr.buildingTile.put(b, tile);
         GameState.addLog("Збудовано: " + b.label + " (" + pr.name + ")");
+        return true;
+    }
+
+    /** Автоматично обирає найближче до центру провінції місце (для екрана «Міста»). */
+    public static void build(World.Province pr, Building b) {
+        if (!canBuild(pr, b)) return;
+        World w = GameState.world;
+        final int T = World.TILES;
+        int best = -1;
+        int bestD = Integer.MAX_VALUE;
+        for (int t = 0; t < T * T; t++) {
+            if (w.provOf[t] != indexOf(pr) || !canPlace(pr, b, t)) continue;
+            int d = Math.abs(t % T - pr.tx) + Math.abs(t / T - pr.ty);
+            if (d < bestD) {
+                bestD = d;
+                best = t;
+            }
+        }
+        if (best >= 0) buildAt(pr, b, best);
     }
 
     // ---------- дохід ----------
@@ -152,11 +204,12 @@ public final class Realm {
     }
 
     public static int armyBonus() {
-        return count(Building.BARRACKS) * 2;
+        return count(Building.BARRACKS) * 2 + count(Building.FORTRESS) * 3;
     }
 
     public static double wallsMult(World.Province pr) {
-        return pr.buildings.contains(Building.WALLS) ? 1.25 : 1.0;
+        double m = pr.buildings.contains(Building.WALLS) ? 1.25 : 1.0;
+        return pr.buildings.contains(Building.FORTRESS) ? m * 1.5 : m;
     }
 
     public static int ownedProvinces() {

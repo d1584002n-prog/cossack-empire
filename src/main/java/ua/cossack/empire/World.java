@@ -111,6 +111,8 @@ public final class World {
         public int tx;
         public int ty;
         public final java.util.EnumSet<Building> buildings = java.util.EnumSet.noneOf(Building.class);
+        // де гравець поставив будівлю: тип -> індекс тайла (y * TILES + x)
+        public final java.util.EnumMap<Building, Integer> buildingTile = new java.util.EnumMap<>(Building.class);
         public boolean explored;
         public Terrain terrain = Terrain.PLAINS;
         public boolean river;
@@ -502,6 +504,8 @@ public final class World {
                 if (dist(pr.col, pr.row, q.col, q.row) <= 1) q.explored = true;
             }
         }
+        // туман війни прибрано: уся карта відкрита
+        for (Province q : provinces) q.explored = true;
         buildTiles();
     }
 
@@ -563,6 +567,7 @@ public final class World {
                     b = r < 45 ? TileAtlas.TEXGRASS + rnd.nextInt(3) : TileAtlas.GRASS_L;
                     if (r > 94) o = TileAtlas.TREE1 + rnd.nextInt(3);
                     else if (r > 91) o = TileAtlas.BUSH1 + rnd.nextInt(2);
+                    else if (r > 76 && r <= 80) o = TileAtlas.FLOWER1 + rnd.nextInt(4);
                     else if (r > 84) o = TileAtlas.WHEAT1 + rnd.nextInt(3);
                 }
                 case MEADOW -> {
@@ -602,7 +607,7 @@ public final class World {
                 line(pr.tx, pr.ty, q.tx, q.ty, (x, y) -> {
                     int t = y * T + x;
                     if (!waterTile(t)) {
-                        base[t] = (byte) TileAtlas.SAND;
+                        base[t] = (byte) TileAtlas.PATH;
                         over[t] = 0;
                     }
                 });
@@ -693,11 +698,11 @@ public final class World {
                 p.py = t / T;
                 over[t] = 0;
                 if (pr.terrain != Terrain.WATER) {
-                    // стежка від будівлі до центру провінції
-                    line(p.px, p.py, sxx, syy, (x, y) -> {
+                    // стежка від будівлі до центру провінції (до міст завжди, до решти не завжди)
+                    if (p.type == PointType.TOWN || rnd.nextInt(100) < 35) line(p.px, p.py, sxx, syy, (x, y) -> {
                         int q = y * T + x;
                         if (!waterTile(q) && base[q] > TileAtlas.SHORE1) {
-                            base[q] = (byte) TileAtlas.SAND;
+                            base[q] = (byte) TileAtlas.PATH;
                             over[q] = 0;
                         }
                     });
@@ -709,7 +714,7 @@ public final class World {
                                 int ay = p.py + fy;
                                 if (ax < 0 || ay < 0 || ax >= T || ay >= T || (fx == 0 && fy == 0)) continue;
                                 int q = ay * T + ax;
-                                if (provOf[q] != i || waterTile(q) || base[q] <= TileAtlas.SAND) continue;
+                                if (provOf[q] != i || waterTile(q) || base[q] <= TileAtlas.SAND || base[q] == TileAtlas.PATH) continue;
                                 if (rnd.nextInt(100) < 38) over[q] = (byte) (TileAtlas.WHEAT1 + rnd.nextInt(3));
                             }
                         }

@@ -46,7 +46,7 @@ public class CitiesScreen extends Screen {
         for (int i = 0; i < buildings.length; i++) {
             final Building b = buildings[i];
             int x = i % 2 == 0 ? x1 : x2;
-            int y = 66 + (i / 2) * 24;
+            int y = 58 + (i / 2) * 22;
             btn[i] = ButtonWidget.builder(Text.literal(b.label), bt -> {
                 World.Province pr = current();
                 if (pr != null) Realm.build(pr, b);
@@ -110,11 +110,11 @@ public class CitiesScreen extends Screen {
                         + "   Епоха: " + Realm.EPOCH_NAMES[Realm.epoch]),
                 this.width / 2, 44, 0xAAAAAA);
         if (!hint.isEmpty()) {
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(hint), this.width / 2, 66 + 4 * 24 + 6, 0xFFD700);
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(hint), this.width / 2, 58 + 5 * 22 + 4, 0xFFD700);
         }
         String log = GameState.logLine(0);
         if (!log.isEmpty()) {
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(log), this.width / 2, this.height - 44, 0xDDDDDD);
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(log), this.width / 2, this.height - 42, 0xDDDDDD);
         }
     }
 

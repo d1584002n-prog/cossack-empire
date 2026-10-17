@@ -16,7 +16,7 @@ public class StrategyMapScreen extends Screen {
     private static final int LEFT_W = 96;
     private static final int RIGHT_W = 176;
     private static final int ROW_H = 12;
-    private static final int MINI_SIZE = 88;
+    private Building placing = null; // будівля, яку гравець зараз ставить на карту
     private static final int FOG_COLOR = 0xFF404040;
     private static final float MAX_ZOOM = 14f;
     private static final int ICON_SRC = 32; // розмір PNG-іконок у ресурсах
@@ -121,8 +121,10 @@ public class StrategyMapScreen extends Screen {
     private int rightX() { return this.width - RIGHT_W - MARGIN; }
     private int mapW() { return rightX() - GAP - mapX(); }
     private int mapH() { return this.height - TOP - BOTTOM; }
-    private int miniW() { return MINI_SIZE; }
-    private int miniH() { return MINI_SIZE; }
+    // мінікарта підлаштовується під висоту екрана, щоб права колонка не накладалась
+    private int miniSize() { return Math.max(40, Math.min(88, this.height - 50 - TOP - 98)); }
+    private int miniW() { return miniSize(); }
+    private int miniH() { return miniSize(); }
 
     /** Розмір тайла в екранних px при zoom = 1 (вся карта вміщається у вікно). */
     private float baseT() {
@@ -332,6 +334,9 @@ public class StrategyMapScreen extends Screen {
                 }
                 TileAtlas.draw(ctx, w.base[t], px, py, S, S, tintCache[pi]);
                 if (k == 1 && w.over[t] != 0) TileAtlas.draw(ctx, w.over[t], px, py, 16, 16, tintCache[pi]);
+                if (placing != null && pi == selected && Realm.canPlace(pr, placing, t)) {
+                    ctx.fill(px, py, px + S, py + S, 0x6055FF55);
+                }
                 if (pi == hovered) ctx.fill(px, py, px + S, py + S, 0x28FFFFFF);
             }
         }
@@ -361,9 +366,98 @@ public class StrategyMapScreen extends Screen {
                         ctx.drawBorder(p.px * 16 - 1, p.py * 16 - 1, 18, 18, 0xFFFFFFFF);
                     }
                 }
+                // будівлі, які поставив гравець (фортеця займає 3x3 тайли)
+                for (java.util.Map.Entry<Building, Integer> e : pr.buildingTile.entrySet()) {
+                    int bt = e.getValue();
+                    int spr = TileAtlas.buildingSprite(e.getKey());
+                    int tw = TileAtlas.tilesWide(spr);
+                    int ox = bt % T - (tw - 1) / 2;
+                    int oy = bt / T - (tw - 1) / 2;
+                    if (ox > x1 + 1 || oy > y1 + 1 || ox + tw < x0 || oy + tw < y0) continue;
+                    TileAtlas.draw(ctx, spr, ox * 16, oy * 16, tw * 16, tw * 16, 0xFFFFFFFF);
+                }
             }
+            drawShips(ctx, x0, y0, x1, y1);
         }
         ctx.getMatrices().pop();
+    }
+
+    /** Кораблі стоять на воді біля портів гравця. */
+    private void drawShips(DrawContext ctx, int x0, int y0, int x1, int y1) {
+        if (GameState.ships <= 0) return;
+        World w = GameState.world;
+        final int T = World.TILES;
+        java.util.List<Integer> ports = new java.util.ArrayList<>();
+        for (World.Province pr : w.provinces) {
+            Integer t = pr.buildingTile.get(Building.PORT);
+            if (t != null && pr.owner == 0) ports.add(t);
+        }
+        if (ports.isEmpty()) return;
+        int per = GameState.ships / ports.size();
+        int extra = GameState.ships % ports.size();
+        for (int k = 0; k < ports.size(); k++) {
+            int n = per + (k < extra ? 1 : 0);
+            int cx = ports.get(k) % T;
+            int cy = ports.get(k) / T;
+            int placed = 0;
+            for (int r = 1; r <= 4 && placed < n; r++) {
+                for (int dy = -r; dy <= r && placed < n; dy++) {
+                    for (int dx = -r; dx <= r && placed < n; dx++) {
+                        if (Math.max(Math.abs(dx), Math.abs(dy)) != r) continue;
+                        int nx = cx + dx;
+                        int ny = cy + dy;
+                        if (nx < 0 || ny < 0 || nx >= T || ny >= T || w.base[ny * T + nx] > TileAtlas.SHORE1) continue;
+                        placed++;
+                        if (nx < x0 - 1 || nx > x1 + 1 || ny < y0 - 1 || ny > y1 + 1) continue;
+                        TileAtlas.draw(ctx, TileAtlas.SHIP, nx * 16, ny * 16, 16, 16, 0xFFFFFFFF);
+                    }
+                }
+            }
+        }
+    }
+
+    private int tileAt(double mx, double my) {
+        if (!inMap(mx, my)) return -1;
+        float ts = tileSize();
+        int tx = (int) Math.floor((mx - mapX() - panX) / ts);
+        int ty = (int) Math.floor((my - TOP - panY) / ts);
+        if (tx < 0 || ty < 0 || tx >= World.TILES || ty >= World.TILES) return -1;
+        return ty * World.TILES + tx;
+    }
+
+    /** Напівпрозорий «привид» будівлі під курсором під час розміщення. */
+    private void drawPlacementGhost(DrawContext ctx, int mouseX, int mouseY) {
+        World.Province pr = buildProvince();
+        if (placing == null || pr == null) return;
+        int t = tileAt(mouseX, mouseY);
+        if (t < 0) return;
+        float ts = tileSize();
+        int spr = TileAtlas.buildingSprite(placing);
+        int tw = TileAtlas.tilesWide(spr);
+        int tx = t % World.TILES - (tw - 1) / 2;
+        int ty = t / World.TILES - (tw - 1) / 2;
+        int x = Math.round(mapX() + panX + tx * ts);
+        int y = Math.round(TOP + panY + ty * ts);
+        int size = Math.max(4, Math.round(ts * tw));
+        boolean ok = Realm.canPlace(pr, placing, t);
+        TileAtlas.draw(ctx, spr, x, y, size, size, ok ? 0xB0FFFFFF : 0x80FF6060);
+    }
+
+    private void handlePlacementClick(double mx, double my) {
+        World.Province pr = buildProvince();
+        int t = tileAt(mx, my);
+        if (pr == null) {
+            placing = null;
+            selectAt(mx, my);
+            return;
+        }
+        if (t < 0) return;
+        if (GameState.world.provOf[t] != selected) {
+            placing = null;
+            selectAt(mx, my);
+            return;
+        }
+        if (Realm.buildAt(pr, placing, t)) placing = null;
     }
 
     private void drawLabels(DrawContext ctx, int hovered) {
@@ -494,16 +588,7 @@ public class StrategyMapScreen extends Screen {
     }
 
     private int buildingIcon(Building b) {
-        return switch (b) {
-            case FARM -> TileAtlas.WHEAT3;
-            case MARKET -> TileAtlas.MARKET;
-            case MINE -> TileAtlas.MINE0;
-            case WALLS -> TileAtlas.TOWER;
-            case BARRACKS -> TileAtlas.HOUSE0 + 5;
-            case LIBRARY -> TileAtlas.CHAPEL;
-            case PORT -> TileAtlas.DOCK0;
-            case FORGE -> TileAtlas.WORKSHOP1;
-        };
+        return TileAtlas.buildingSprite(b);
     }
 
     private void drawBuildStrip(DrawContext ctx, int mouseX, int mouseY) {
@@ -511,7 +596,10 @@ public class StrategyMapScreen extends Screen {
         int y = stripY();
         panel(ctx, x, y, mapW(), 24);
         World.Province pr = buildProvince();
-        if (pr == null) {
+        if (placing != null) {
+            text(ctx, textRenderer.trimToWidth("Постав: " + placing.label, 92), x + 5, y + 3, 0x88FF88);
+            text(ctx, textRenderer.trimToWidth("ПКМ — скасувати", 92), x + 5, y + 13, 0xE9D9A4);
+        } else if (pr == null) {
             text(ctx, textRenderer.trimToWidth("Обери свою провінцію", 90), x + 5, y + 8, 0xAA9966);
         } else {
             text(ctx, textRenderer.trimToWidth(pr.name, 90), x + 5, y + 3, 0xFFD700);
@@ -529,7 +617,7 @@ public class StrategyMapScreen extends Screen {
             ctx.fill(sx, sy, sx + ss, sy + ss, 0xFF3A2A18);
             TileAtlas.draw(ctx, buildingIcon(b), sx + 1, sy + 1, ss - 2, ss - 2, 0xFFFFFFFF);
             if (!built) ctx.fill(sx + 1, sy + 1, sx + ss - 1, sy + ss - 1, can ? 0x30000000 : 0xB0000000);
-            ctx.drawBorder(sx, sy, ss, ss, built ? 0xFF55AA55 : can ? 0xFFD9B04A : 0xFF5A4122);
+            ctx.drawBorder(sx, sy, ss, ss, placing == b ? 0xFFFFFFFF : built ? 0xFF55AA55 : can ? 0xFFD9B04A : 0xFF5A4122);
             if (mouseX >= sx && mouseX < sx + ss && mouseY >= sy && mouseY < sy + ss) {
                 tipX = sx;
                 if (built) tip = b.label + ": " + b.effect;
@@ -589,6 +677,10 @@ public class StrategyMapScreen extends Screen {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (super.mouseClicked(mx, my, button)) return true;
+        if (button == 1 && placing != null) {
+            placing = null;
+            return true;
+        }
         if (button != 0) return false;
 
         int zy = TOP + mapH() - 17;
@@ -633,7 +725,11 @@ public class StrategyMapScreen extends Screen {
                 int sx = slotX(i);
                 int sy = stripY() + 2;
                 if (mx >= sx && mx < sx + slotSize() && my >= sy && my < sy + slotSize()) {
-                    Realm.build(bp, BLD[i]);
+                    if (placing == BLD[i]) {
+                        placing = null;
+                    } else if (Realm.canBuild(bp, BLD[i])) {
+                        placing = BLD[i]; // далі клікни на зелену клітинку своєї провінції
+                    }
                     return true;
                 }
             }
@@ -675,7 +771,10 @@ public class StrategyMapScreen extends Screen {
     public boolean mouseReleased(double mx, double my, int button) {
         if (dragging && button == 0) {
             dragging = false;
-            if (moved < 4) selectAt(mx, my);
+            if (moved < 4) {
+                if (placing != null) handlePlacementClick(mx, my);
+                else selectAt(mx, my);
+            }
             return true;
         }
         return super.mouseReleased(mx, my, button);
@@ -806,6 +905,7 @@ public class StrategyMapScreen extends Screen {
 
         drawWorld(ctx, hovered);
         drawShields(ctx);
+        drawPlacementGhost(ctx, mouseX, mouseY);
         drawLabels(ctx, hovered);
         ctx.disableScissor();
         drawBuildStrip(ctx, mouseX, mouseY);
@@ -828,10 +928,10 @@ public class StrategyMapScreen extends Screen {
         panel(ctx, rx - 2, TOP - 2, miniW() + 4, miniH() + 4);
         for (int i = 0; i < provinces.length; i++) {
             World.Province pr = provinces[i];
-            int x = rx + pr.col * MINI_SIZE / World.COLS;
-            int y = TOP + pr.row * MINI_SIZE / World.ROWS;
-            int x2 = rx + (pr.col + 1) * MINI_SIZE / World.COLS;
-            int y2 = TOP + (pr.row + 1) * MINI_SIZE / World.ROWS;
+            int x = rx + pr.col * miniW() / World.COLS;
+            int y = TOP + pr.row * miniH() / World.ROWS;
+            int x2 = rx + (pr.col + 1) * miniW() / World.COLS;
+            int y2 = TOP + (pr.row + 1) * miniH() / World.ROWS;
             ctx.fill(x, y, Math.max(x2, x + 1), Math.max(y2, y + 1), miniColor(pr));
         }
         float tw = totalW();
@@ -916,8 +1016,9 @@ public class StrategyMapScreen extends Screen {
             text(ctx, "Натисни на провінцію", rx, hy, 0xFFFFFF);
         }
 
-        if (info1 != null) text(ctx, info1, rx, this.height - 76, infoOk ? 0xFFFFFF : 0xFF5555);
-        if (info2 != null) text(ctx, info2, rx, this.height - 64, infoOk ? 0xFFFFFF : 0xFF5555);
+        int infoY = listTop() + 3 * ROW_H + 4;
+        if (info1 != null) text(ctx, info1, rx, infoY, infoOk ? 0xFFFFFF : 0xFF5555);
+        if (info2 != null) text(ctx, info2, rx, infoY + 12, infoOk ? 0xFFFFFF : 0xFF5555);
 
         // ----- журнал подій -----
         int logW = rightX() - GAP - MARGIN;
