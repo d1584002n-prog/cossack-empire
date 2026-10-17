@@ -17,11 +17,11 @@ public class TechScreen extends Screen {
     }
 
     private int bw() {
-        return Math.min(118, (this.width - 48) / 4 - 4);
+        return Math.min(118, (this.width - 48) / Tech.BRANCHES.length - 4);
     }
 
     private int colX(int branch) {
-        int total = bw() * 4 + 12;
+        int total = bw() * Tech.BRANCHES.length + 4 * (Tech.BRANCHES.length - 1);
         return this.width / 2 - total / 2 + branch * (bw() + 4);
     }
 

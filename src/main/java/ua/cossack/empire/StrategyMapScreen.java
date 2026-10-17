@@ -894,9 +894,9 @@ public class StrategyMapScreen extends Screen {
                     info2 = "Залізо " + GameState.costIron(sp);
                 }
             } else if (enemy) {
-                if (!GameState.isNearMine(selProv)) {
+                if (!GameState.isNearMine(selProv) && !GameState.seaReach(selProv)) {
                     info1 = "Занадто далеко";
-                    info2 = "від твоїх земель";
+                    info2 = GameState.ships > 0 ? "(потрібен порт поруч)" : "(потрібен флот)";
                     infoOk = false;
                 } else if (!GameState.atWarWith(sp)) {
                     info1 = "Спершу оголоси війну";
@@ -907,7 +907,9 @@ public class StrategyMapScreen extends Screen {
                     infoOk = false;
                 } else {
                     int approx = Math.round(sp.garrison / 5f) * 5;
-                    info1 = "Сила " + GameState.armyPower() + " проти ~" + approx;
+                    boolean sea = !GameState.isNearMine(selProv);
+                    info1 = (sea ? "Десант " + GameState.landingPower() : "Сила " + GameState.armyPower())
+                            + " проти ~" + approx;
                 }
             }
         } else {

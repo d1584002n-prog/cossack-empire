@@ -16,6 +16,13 @@ public final class GameState {
 
     public static final String[] UNIT_NAMES = {"Козаки", "Мушкетери", "Кіннота"};
     public static final int[] UNIT_POWER = {3, 5, 6};
+
+    // ---------- флот ----------
+    public static int ships;
+    public static final int SHIP_GOLD = 60;
+    public static final int SHIP_WOOD = 40;
+    public static final int SHIP_IRON = 10;
+    private static final int SHIP_UPKEEP = 3;
     // порядок: золото, їжа, дерево, залізо, порох, коні
     private static final int[][] RECRUIT_COST = {
         {10, 5, 0, 0, 0, 0},
@@ -59,6 +66,7 @@ public final class GameState {
         army[2] = 0;
         prisoners = 0;
         Realm.reset();
+        ships = 0;
         java.util.Arrays.fill(techDone, false);
         researching = null;
         researchLeft = 0;
@@ -93,7 +101,7 @@ public final class GameState {
             }
         }
         total += Realm.buildingIncome(r);
-        if (r == World.ResourceType.GOLD) total += Realm.taxIncome();
+        if (r == World.ResourceType.GOLD) total += Realm.taxIncome() + Realm.seaTrade();
         return total * Math.max(0, 100 + resourceBonus(r)) / 100;
     }
 
@@ -190,7 +198,7 @@ public final class GameState {
     }
 
     public static int upkeepGold() {
-        return armyPower() / 5;
+        return armyPower() / 5 + ships * SHIP_UPKEEP;
     }
 
     private static void desert(double ratio) {
@@ -474,6 +482,54 @@ public final class GameState {
         p.level++;
     }
 
+    // ---------- флот і морські походи ----------
+
+    public static int maxShips() {
+        return hasTech(Tech.SHIPS) ? Realm.ports() * 3 : 0;
+    }
+
+    public static int shipCap() {
+        return hasTech(Tech.GALLEONS) ? 50 : 25;
+    }
+
+    public static int seaRange() {
+        return hasTech(Tech.NAVIGATION) ? 16 : 9;
+    }
+
+    public static boolean canBuildShip() {
+        return ships < maxShips()
+                && stock.get(World.ResourceType.GOLD) >= SHIP_GOLD
+                && stock.get(World.ResourceType.WOOD) >= SHIP_WOOD
+                && stock.get(World.ResourceType.IRON) >= SHIP_IRON;
+    }
+
+    public static void buildShip() {
+        if (!canBuildShip()) return;
+        stock.merge(World.ResourceType.GOLD, -SHIP_GOLD, Integer::sum);
+        stock.merge(World.ResourceType.WOOD, -SHIP_WOOD, Integer::sum);
+        stock.merge(World.ResourceType.IRON, -SHIP_IRON, Integer::sum);
+        ships++;
+        addLog("Збудовано чайку. Флот: " + ships);
+    }
+
+    /** Чи може флот дістатися цієї провінції: потрібен корабель, порт поруч і берег у цілі. */
+    public static boolean seaReach(World.Province target) {
+        if (ships <= 0 || target.terrain == World.Terrain.WATER || !Realm.coastal(target)) return false;
+        for (World.Province pr : world.provinces) {
+            if (pr.owner == 0 && pr.buildings.contains(Building.PORT)
+                    && World.dist(pr.col, pr.row, target.col, target.row) <= seaRange()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Сила десанту: скільки війська вміщують кораблі, з поправкою на висадку. */
+    public static int landingPower() {
+        int carried = Math.min(armyPower(), ships * shipCap());
+        return carried * (hasTech(Tech.NAVIGATION) ? 80 : 60) / 100;
+    }
+
     // ---------- туман і шпигун ----------
 
     public static boolean nextToExplored(World.Province target) {
@@ -485,7 +541,7 @@ public final class GameState {
 
     public static boolean canSpy(World.Province target) {
         return !target.explored
-                && nextToExplored(target)
+                && (nextToExplored(target) || seaReach(target))
                 && stock.get(World.ResourceType.GOLD) >= spyCost()
                 && stock.get(World.ResourceType.HORSES) >= SPY_HORSES;
     }
@@ -563,7 +619,8 @@ public final class GameState {
     }
 
     public static boolean canAttack(World.Province pr, World.Point p) {
-        return attacksLeft > 0 && pr.explored && p.owner != 0 && atWarWith(p) && armyPower() > 0 && isNearMine(pr);
+        return attacksLeft > 0 && pr.explored && p.owner != 0 && atWarWith(p) && armyPower() > 0
+                && (isNearMine(pr) || seaReach(pr));
     }
 
     private static void revealAroundMine() {
@@ -582,8 +639,9 @@ public final class GameState {
     public static void attack(World.Province pr, World.Point p) {
         if (!canAttack(pr, p)) return;
         attacksLeft--;
-        // у похід іде лише частина армії, міста захищені краще
-        double att = armyPower() * 0.6 * (0.8 + RNG.nextDouble() * 0.4);
+        boolean naval = !isNearMine(pr);
+        // у похід іде лише частина армії (при десанті — скільки вміщують кораблі), міста захищені краще
+        double att = (naval ? landingPower() : armyPower() * 0.6) * (0.8 + RNG.nextDouble() * 0.4);
         double def = p.garrison * (1.0 + 0.15 * (p.level - 1)) * (p.type == World.PointType.TOWN ? 1.4 : 1.0)
                 * (1.0 + Realm.ownedProvinces() / 40.0) // чим більша держава, тим важче завойовувати
                 * (0.8 + RNG.nextDouble() * 0.4);
@@ -616,6 +674,10 @@ public final class GameState {
             desert(0.6);
             p.garrison = Math.max(2, p.garrison - (int) (att / 4));
             addLog("Поразка: " + where + ". Втрачено 60% війська");
+            if (naval && ships > 0) {
+                ships--;
+                addLog("Десант відбито: корабель потоплено");
+            }
         }
     }
 

@@ -67,7 +67,7 @@ public class EconomyScreen extends Screen {
                         + "   Їсть: " + Realm.popFood() + " їжі/хід"),
                 this.width / 2, 22, 0xFFFFFF);
         ctx.drawCenteredTextWithShadow(textRenderer,
-                Text.literal("Податки: +" + Realm.taxIncome() + " золота/хід   Наука: " + Realm.science
+                Text.literal("Податки: +" + Realm.taxIncome() + "   Море: +" + Realm.seaTrade() + " золота/хід   Наука: " + Realm.science
                         + " (+" + Realm.scienceIncome() + ")"),
                 this.width / 2, 34, 0xFFFFFF);
         ctx.drawCenteredTextWithShadow(textRenderer,

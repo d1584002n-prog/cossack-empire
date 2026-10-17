@@ -15,6 +15,7 @@ public final class World {
     private static final int BASE_COLS = 16;
     private static final int BASE_ROWS = 11;
     private static final double NS = 3.0; // масштаб шуму рельєфу
+    private static final double CHANNEL_W = 0.06; // ширина океанських проток
 
     private static int scCol(int c) {
         return Math.max(0, Math.min(COLS - 1, (int) Math.round((c + 0.5) * COLS / BASE_COLS - 0.5)));
@@ -155,6 +156,49 @@ public final class World {
         {2, 0}, {7, 1}, {0, 5}, {0, 8}, {3, 10}, {5, 9}, {11, 8}, {13, 6}, {15, 7}, {8, 10}, {12, 0}
     };
 
+    /** Мінімальна відстань (Чебишов) від клітинки до найближчої столиці. */
+    private static int capitalDist(int c, int r) {
+        int best = Integer.MAX_VALUE;
+        for (Countries.Country k : Countries.ALL) {
+            best = Math.min(best, dist(c, r, scCol(k.col()), scRow(k.row())));
+        }
+        return best;
+    }
+
+    private static void carveChannels(Terrain[] terr, Random rnd) {
+        int channels = 3;
+        for (int ch = 0; ch < channels; ch++) {
+            boolean horizontal = ch != 2;
+            int len = horizontal ? COLS : ROWS;
+            int across = horizontal ? ROWS : COLS;
+            int pos = across / 5 + rnd.nextInt(across * 3 / 5);
+            for (int step = 0; step < len; step++) {
+                for (int w = 0; w < 2; w++) {
+                    int a = Math.max(0, Math.min(across - 1, pos + w));
+                    int c = horizontal ? step : a;
+                    int r = horizontal ? a : step;
+                    terr[r * COLS + c] = Terrain.WATER;
+                }
+                // наступний крок: ухиляємось від столиць, інакше випадкове блукання
+                int bestPos = pos;
+                int bestScore = Integer.MAX_VALUE;
+                for (int d = -1; d <= 1; d++) {
+                    int np = Math.max(1, Math.min(across - 3, pos + d));
+                    int nStep = Math.min(len - 1, step + 1);
+                    int c = horizontal ? nStep : np;
+                    int r = horizontal ? np : nStep;
+                    int near = Math.min(capitalDist(c, r), capitalDist(horizontal ? nStep : np + 1, horizontal ? np + 1 : nStep));
+                    int score = (near < 3 ? 100 : 0) + rnd.nextInt(10) + (d == 0 ? 0 : 3);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestPos = np;
+                    }
+                }
+                pos = bestPos;
+            }
+        }
+    }
+
     private static String roman(int n) {
         String[] r = {"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
         return n < r.length ? r[n] : String.valueOf(n);
@@ -232,12 +276,54 @@ public final class World {
                     + 0.3 * vnoise(seed, 5, x / (2.0 * NS), y / (2.0 * NS))
                     + 0.1 * vnoise(seed, 6, x, y);
         }
+        // ----- континенти й острови -----
+        // моря (Північне, Чорне, Середземне...) пробивають океанські протоки між континентами,
+        // а випадкові острови з'являються на відкритій воді
+        for (int k = 0; k < SEA_POS.length; k++) {
+            double sc = scCol(SEA_POS[k][0]);
+            double sr = scRow(SEA_POS[k][1]);
+            double radius = 8.0;
+            for (int i = 0; i < n; i++) {
+                double dx = i % COLS - sc;
+                double dy = i / COLS - sr;
+                double d = Math.sqrt(dx * dx + dy * dy);
+                if (d < radius) {
+                    double f = 1.0 - d / radius;
+                    elev[i] -= 1.4 * f * (0.6 + 0.4 * f);
+                }
+            }
+        }
+        // звивисті океанські протоки (хребтовий шум) розділяють суходіл на континенти
+        for (int i = 0; i < n; i++) {
+            double x = i % COLS + 0.5 * ((i / COLS) & 1);
+            double y = (i / COLS) * 0.87;
+            double v = 0.7 * vnoise(seed, 20, x / (3.0 * NS), y / (3.0 * NS))
+                    + 0.3 * vnoise(seed, 21, x / (1.5 * NS), y / (1.5 * NS));
+            double band = Math.abs(v - 0.5);
+            if (band < CHANNEL_W) elev[i] -= 1.1 * (1.0 - band / CHANNEL_W);
+        }
+        for (int isl = 0; isl < 18; isl++) {
+            int ic = 2 + rnd.nextInt(COLS - 4);
+            int ir = 2 + rnd.nextInt(ROWS - 4);
+            boolean nearCapital = false;
+            for (Countries.Country c : Countries.ALL) {
+                if (dist(ic, ir, scCol(c.col()), scRow(c.row())) < 7) nearCapital = true;
+            }
+            if (nearCapital) continue;
+            double radius = 1.5 + rnd.nextDouble() * 1.5;
+            for (int i = 0; i < n; i++) {
+                double dx = i % COLS - ic;
+                double dy = i / COLS - ir;
+                double d = Math.sqrt(dx * dx + dy * dy);
+                if (d < radius) elev[i] += 0.55 * (1.0 - d / radius);
+            }
+        }
         double[] se = elev.clone();
         Arrays.sort(se);
         double[] sm = moist.clone();
         Arrays.sort(sm);
-        double waterT = se[(int) (n * 0.12)];
-        double mountT = se[(int) (n * 0.88)];
+        double waterT = se[(int) (n * 0.40)];
+        double mountT = se[(int) (n * 0.91)];
         double medianE = se[n / 2];
         double dryT = sm[(int) (n * 0.30)];
         double wetT = sm[(int) (n * 0.68)];
@@ -258,9 +344,17 @@ public final class World {
             }
         }
 
+        // океанські протоки: звивисті шляхи завширшки 2 провінції від краю до краю карти,
+        // що обходять столиці; вони розділяють суходіл на континенти
+        carveChannels(terr, rnd);
+
+        // навколо кожної столиці гарантований суходіл (3x3), щоб держава не опинилась у морі
         for (Countries.Country c : Countries.ALL) {
-            int ci = scRow(c.row()) * COLS + scCol(c.col());
-            if (terr[ci] == Terrain.WATER) terr[ci] = Terrain.MEADOW;
+            int cc = scCol(c.col());
+            int cr = scRow(c.row());
+            for (int i = 0; i < n; i++) {
+                if (dist(i % COLS, i / COLS, cc, cr) <= 1 && terr[i] == Terrain.WATER) terr[i] = Terrain.MEADOW;
+            }
         }
 
         // ----- річки -----
@@ -294,6 +388,37 @@ public final class World {
             }
         }
 
+        // ----- континенти (зв'язні масиви суходолу) -----
+        int[] comp = new int[n];
+        Arrays.fill(comp, -1);
+        int compCount = 0;
+        for (int i = 0; i < n; i++) {
+            if (terr[i] == Terrain.WATER || comp[i] >= 0) continue;
+            java.util.ArrayDeque<Integer> fill = new java.util.ArrayDeque<>();
+            fill.add(i);
+            comp[i] = compCount;
+            while (!fill.isEmpty()) {
+                int cur = fill.poll();
+                for (int dr = -1; dr <= 1; dr++) {
+                    for (int dc = -1; dc <= 1; dc++) {
+                        int nc = cur % COLS + dc;
+                        int nr = cur / COLS + dr;
+                        if (nc < 0 || nr < 0 || nc >= COLS || nr >= ROWS) continue;
+                        int j = nr * COLS + nc;
+                        if (terr[j] != Terrain.WATER && comp[j] < 0) {
+                            comp[j] = compCount;
+                            fill.add(j);
+                        }
+                    }
+                }
+            }
+            compCount++;
+        }
+        int[] capComp = new int[STATES];
+        for (int f = 0; f < STATES; f++) {
+            capComp[f] = comp[scRow(Countries.ALL[f].row()) * COLS + scCol(Countries.ALL[f].col())];
+        }
+
         // ----- держави -----
         double[] weight = new double[STATES];
         for (int f = 0; f < STATES; f++) weight[f] = Countries.ALL[f].weight() + rnd.nextDouble() * 0.15;
@@ -308,11 +433,15 @@ public final class World {
             int owner = WATER_OWNER;
             if (t != Terrain.WATER) {
                 double best = Double.MAX_VALUE;
-                for (int f = 1; f < STATES; f++) { // Гетьманщина — лише стартовий клаптик гравця
-                    double d = dist(col, row, scCol(Countries.ALL[f].col()), scRow(Countries.ALL[f].row())) * weight[f] + rnd.nextDouble() * 0.9 * NS;
-                    if (d < best) {
-                        best = d;
-                        owner = f;
+                // спершу претенденти з того ж континенту; якщо їх нема — найближча держава (колонія)
+                for (int pass = 0; pass < 2 && owner == WATER_OWNER; pass++) {
+                    for (int f = 1; f < STATES; f++) { // Гетьманщина — лише стартовий клаптик гравця
+                        if (pass == 0 && capComp[f] != comp[i]) continue;
+                        double d = dist(col, row, scCol(Countries.ALL[f].col()), scRow(Countries.ALL[f].row())) * weight[f] + rnd.nextDouble() * 0.9 * NS;
+                        if (d < best) {
+                            best = d;
+                            owner = f;
+                        }
                     }
                 }
                 if (dist(col, row, centerCol, centerRow) <= 1) owner = 0;

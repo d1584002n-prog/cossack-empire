@@ -142,6 +142,15 @@ public final class Realm {
         return population / 25;
     }
 
+    public static int ports() {
+        return count(Building.PORT);
+    }
+
+    /** Морська торгівля: кожна пара порт + корабель приносить золото. */
+    public static int seaTrade() {
+        return Math.min(ports(), GameState.ships) * 6;
+    }
+
     public static int armyBonus() {
         return count(Building.BARRACKS) * 2;
     }

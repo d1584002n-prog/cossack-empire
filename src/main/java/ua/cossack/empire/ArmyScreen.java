@@ -8,6 +8,7 @@ import net.minecraft.text.Text;
 public class ArmyScreen extends Screen {
     private final Screen parent;
     private final ButtonWidget[] recruitBtn = new ButtonWidget[3];
+    private ButtonWidget shipBtn;
     private ButtonWidget ransomBtn;
     private ButtonWidget enlistBtn;
     private ButtonWidget releaseBtn;
@@ -28,6 +29,11 @@ public class ArmyScreen extends Screen {
                     .build();
             addDrawableChild(recruitBtn[t]);
         }
+
+        shipBtn = ButtonWidget.builder(Text.literal(""), b -> GameState.buildShip())
+                .dimensions(x, 44 + 3 * 24, bw, 20)
+                .build();
+        addDrawableChild(shipBtn);
 
         int pw = 100;
         int px = this.width / 2 - (pw * 3 + 12) / 2;
@@ -54,6 +60,15 @@ public class ArmyScreen extends Screen {
                     GameState.UNIT_NAMES[t] + " (" + GameState.army[t] + ")  +1: " + GameState.costText(t)));
             recruitBtn[t].active = GameState.canRecruit(t);
         }
+        if (!GameState.hasTech(Tech.SHIPS)) {
+            shipBtn.setMessage(Text.literal("Флот: потрібна технологія «Кораблебудування»"));
+        } else if (GameState.maxShips() == 0) {
+            shipBtn.setMessage(Text.literal("Флот: збудуй порт у прибережній провінції"));
+        } else {
+            shipBtn.setMessage(Text.literal("Чайка (" + GameState.ships + "/" + GameState.maxShips() + ")  +1: Золото "
+                    + GameState.SHIP_GOLD + ", Дерево " + GameState.SHIP_WOOD + ", Залізо " + GameState.SHIP_IRON));
+        }
+        shipBtn.active = GameState.canBuildShip();
         boolean has = GameState.prisoners > 0;
         ransomBtn.active = has;
         enlistBtn.active = has;
@@ -66,6 +81,10 @@ public class ArmyScreen extends Screen {
                 Text.literal("Сила: " + GameState.armyPower() + "   Утримання за хід: Їжа "
                         + GameState.upkeepFood() + ", Золото " + GameState.upkeepGold()),
                 this.width / 2, 26, 0xFFFFFF);
+        ctx.drawCenteredTextWithShadow(textRenderer,
+                Text.literal("Флот: " + GameState.ships + " (місткість " + GameState.shipCap() + " на корабель, дальність "
+                        + GameState.seaRange() + ")"),
+                this.width / 2, 120 + 2, 0xAAD4FF);
         ctx.drawCenteredTextWithShadow(textRenderer,
                 Text.literal("Полонені: " + GameState.prisoners + "   (викуп: +" + GameState.prisoners * 10 + " золота)"),
                 this.width / 2, 138, 0xFFD700);
