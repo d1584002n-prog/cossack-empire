@@ -56,7 +56,7 @@ public final class GameState {
     }
 
     public static void newGame() {
-        world = new World(System.nanoTime());
+        world = new World(1572L); // карта Європи завжди однакова
         turn = 1;
         for (World.ResourceType r : World.ResourceType.values()) {
             stock.put(r, r == World.ResourceType.GOLD ? 100 : 20);

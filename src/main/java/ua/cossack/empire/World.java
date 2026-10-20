@@ -7,32 +7,21 @@ import java.util.List;
 import java.util.Random;
 
 public final class World {
-    public static final int TILES = 192;   // карта 192 x 192 тайлів (16 px = 3072 x 3072 px)
-    public static final int PS = 4;        // середній розмір провінції: 4 x 4 тайли
-    public static final int COLS = TILES / PS;
-    public static final int ROWS = TILES / PS; // 48 x 48 = 2304 провінції
-    // координати країн у Countries.java задані для сітки 16 x 11 — масштабуємо
-    private static final int BASE_COLS = 16;
-    private static final int BASE_ROWS = 11;
-    private static final double NS = 3.0; // масштаб шуму рельєфу
-    private static final double CHANNEL_W = 0.06; // ширина океанських проток
+    // Фіксована карта Європи: 256 x 200 тайлів (16 px = 4096 x 3200 px), провінції ≈ 4 x 4 тайли
+    public static final int TW = EuropeData.TW;
+    public static final int TH = EuropeData.TH;
+    public static final int PS = 4;
+    public static final int COLS = TW / PS;  // 64
+    public static final int ROWS = TH / PS;  // 50 => 3200 провінцій
 
-    private static int scCol(int c) {
-        return Math.max(0, Math.min(COLS - 1, (int) Math.round((c + 0.5) * COLS / BASE_COLS - 0.5)));
-    }
-
-    private static int scRow(int r) {
-        return Math.max(0, Math.min(ROWS - 1, (int) Math.round((r + 0.5) * ROWS / BASE_ROWS - 0.5)));
-    }
-
-    /** Індекс провінції-столиці держави f (0 — Гетьманщина). */
+    /** Індекс провінції-столиці держави f (0 — Гетьманщина): клітинка сітки, що містить столицю. */
     public static int capitalIndex(int f) {
-        Countries.Country c = Countries.ALL[f];
-        return scRow(c.row()) * COLS + scCol(c.col());
+        double[] c = EuropeData.CAPITALS[f];
+        return (EuropeData.tileY(c[1]) / PS) * COLS + EuropeData.tileX(c[0]) / PS;
     }
 
-    public static int startCol() { return scCol(Countries.ALL[0].col()); }
-    public static int startRow() { return scRow(Countries.ALL[0].row()); }
+    public static int startCol() { return capitalIndex(0) % COLS; }
+    public static int startRow() { return capitalIndex(0) / COLS; }
     private static final int STATES = Countries.ALL.length;
     public static final int REBELS = STATES;
     public static final int WATER_OWNER = STATES + 1;
@@ -111,7 +100,7 @@ public final class World {
         public int tx;
         public int ty;
         public final java.util.EnumSet<Building> buildings = java.util.EnumSet.noneOf(Building.class);
-        // де гравець поставив будівлю: тип -> індекс тайла (y * TILES + x)
+        // де гравець поставив будівлю: тип -> індекс тайла (y * TW + x)
         public final java.util.EnumMap<Building, Integer> buildingTile = new java.util.EnumMap<>(Building.class);
         public boolean explored;
         public Terrain terrain = Terrain.PLAINS;
@@ -158,49 +147,6 @@ public final class World {
         {2, 0}, {7, 1}, {0, 5}, {0, 8}, {3, 10}, {5, 9}, {11, 8}, {13, 6}, {15, 7}, {8, 10}, {12, 0}
     };
 
-    /** Мінімальна відстань (Чебишов) від клітинки до найближчої столиці. */
-    private static int capitalDist(int c, int r) {
-        int best = Integer.MAX_VALUE;
-        for (Countries.Country k : Countries.ALL) {
-            best = Math.min(best, dist(c, r, scCol(k.col()), scRow(k.row())));
-        }
-        return best;
-    }
-
-    private static void carveChannels(Terrain[] terr, Random rnd) {
-        int channels = 3;
-        for (int ch = 0; ch < channels; ch++) {
-            boolean horizontal = ch != 2;
-            int len = horizontal ? COLS : ROWS;
-            int across = horizontal ? ROWS : COLS;
-            int pos = across / 5 + rnd.nextInt(across * 3 / 5);
-            for (int step = 0; step < len; step++) {
-                for (int w = 0; w < 2; w++) {
-                    int a = Math.max(0, Math.min(across - 1, pos + w));
-                    int c = horizontal ? step : a;
-                    int r = horizontal ? a : step;
-                    terr[r * COLS + c] = Terrain.WATER;
-                }
-                // наступний крок: ухиляємось від столиць, інакше випадкове блукання
-                int bestPos = pos;
-                int bestScore = Integer.MAX_VALUE;
-                for (int d = -1; d <= 1; d++) {
-                    int np = Math.max(1, Math.min(across - 3, pos + d));
-                    int nStep = Math.min(len - 1, step + 1);
-                    int c = horizontal ? nStep : np;
-                    int r = horizontal ? np : nStep;
-                    int near = Math.min(capitalDist(c, r), capitalDist(horizontal ? nStep : np + 1, horizontal ? np + 1 : nStep));
-                    int score = (near < 3 ? 100 : 0) + rnd.nextInt(10) + (d == 0 ? 0 : 3);
-                    if (score < bestScore) {
-                        bestScore = score;
-                        bestPos = np;
-                    }
-                }
-                pos = bestPos;
-            }
-        }
-    }
-
     private static String roman(int n) {
         String[] r = {"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
         return n < r.length ? r[n] : String.valueOf(n);
@@ -245,185 +191,90 @@ public final class World {
 
     public final long seed;
     public final Province[] provinces;
-    public final byte[] base = new byte[TILES * TILES];
-    public final byte[] over = new byte[TILES * TILES];
-    public final short[] provOf = new short[TILES * TILES];
+    public final byte[] base = new byte[TW * TH];
+    public final byte[] over = new byte[TW * TH];
+    public final short[] provOf = new short[TW * TH];
+    private final boolean[] tileWater = new boolean[TW * TH]; // вода за маскою береги
 
     public World(long seed) {
         this.seed = seed;
         Random rnd = new Random(seed);
-        int n = COLS * ROWS;
+        final int n = COLS * ROWS;
 
-        // ----- назви (справжні для кожної країни) -----
-        NameQueue[] regionQ = new NameQueue[STATES];
+        // ----- назви міст кожної держави -----
         NameQueue[] townQ = new NameQueue[STATES];
-        for (int f = 0; f < STATES; f++) {
-            regionQ[f] = new NameQueue(Countries.ALL[f].regions(), rnd);
-            townQ[f] = new NameQueue(Countries.ALL[f].towns(), rnd);
-        }
-        int[] seaCount = new int[SEA_NAMES.length];
+        for (int f = 0; f < STATES; f++) townQ[f] = new NameQueue(Countries.ALL[f].towns(), rnd);
 
-        // ----- рельєф -----
-        double[] elev = new double[n];
-        double[] moist = new double[n];
-        for (int i = 0; i < n; i++) {
-            int col = i % COLS;
-            int row = i / COLS;
-            double x = col + 0.5 * (row & 1);
-            double y = row * 0.87;
-            elev[i] = 0.6 * vnoise(seed, 1, x / (4.0 * NS), y / (4.0 * NS))
-                    + 0.3 * vnoise(seed, 2, x / (2.0 * NS), y / (2.0 * NS))
-                    + 0.1 * vnoise(seed, 3, x, y);
-            moist[i] = 0.6 * vnoise(seed, 4, x / (4.0 * NS), y / (4.0 * NS))
-                    + 0.3 * vnoise(seed, 5, x / (2.0 * NS), y / (2.0 * NS))
-                    + 0.1 * vnoise(seed, 6, x, y);
+        // ----- маска суходолу (береги Європи) -----
+        for (int y = 0; y < TH; y++) {
+            for (int x = 0; x < TW; x++) tileWater[y * TW + x] = !EuropeData.land(x, y);
         }
-        // ----- континенти й острови -----
-        // моря (Північне, Чорне, Середземне...) пробивають океанські протоки між континентами,
-        // а випадкові острови з'являються на відкритій воді
-        for (int k = 0; k < SEA_POS.length; k++) {
-            double sc = scCol(SEA_POS[k][0]);
-            double sr = scRow(SEA_POS[k][1]);
-            double radius = 8.0;
-            for (int i = 0; i < n; i++) {
-                double dx = i % COLS - sc;
-                double dy = i / COLS - sr;
-                double d = Math.sqrt(dx * dx + dy * dy);
-                if (d < radius) {
-                    double f = 1.0 - d / radius;
-                    elev[i] -= 1.4 * f * (0.6 + 0.4 * f);
-                }
-            }
-        }
-        // звивисті океанські протоки (хребтовий шум) розділяють суходіл на континенти
-        for (int i = 0; i < n; i++) {
-            double x = i % COLS + 0.5 * ((i / COLS) & 1);
-            double y = (i / COLS) * 0.87;
-            double v = 0.7 * vnoise(seed, 20, x / (3.0 * NS), y / (3.0 * NS))
-                    + 0.3 * vnoise(seed, 21, x / (1.5 * NS), y / (1.5 * NS));
-            double band = Math.abs(v - 0.5);
-            if (band < CHANNEL_W) elev[i] -= 1.1 * (1.0 - band / CHANNEL_W);
-        }
-        for (int isl = 0; isl < 18; isl++) {
-            int ic = 2 + rnd.nextInt(COLS - 4);
-            int ir = 2 + rnd.nextInt(ROWS - 4);
-            boolean nearCapital = false;
-            for (Countries.Country c : Countries.ALL) {
-                if (dist(ic, ir, scCol(c.col()), scRow(c.row())) < 7) nearCapital = true;
-            }
-            if (nearCapital) continue;
-            double radius = 1.5 + rnd.nextDouble() * 1.5;
-            for (int i = 0; i < n; i++) {
-                double dx = i % COLS - ic;
-                double dy = i / COLS - ir;
-                double d = Math.sqrt(dx * dx + dy * dy);
-                if (d < radius) elev[i] += 0.55 * (1.0 - d / radius);
-            }
-        }
-        double[] se = elev.clone();
-        Arrays.sort(se);
-        double[] sm = moist.clone();
-        Arrays.sort(sm);
-        double waterT = se[(int) (n * 0.40)];
-        double mountT = se[(int) (n * 0.91)];
-        double medianE = se[n / 2];
-        double dryT = sm[(int) (n * 0.30)];
-        double wetT = sm[(int) (n * 0.68)];
 
+        // ----- насіння провінцій (фіксоване) і Вороной -----
+        Random grnd = new Random(0xE0409EL);
+        int[] sx = new int[n];
+        int[] sy = new int[n];
+        for (int i = 0; i < n; i++) {
+            sx[i] = (i % COLS) * PS + grnd.nextInt(PS);
+            sy[i] = (i / COLS) * PS + grnd.nextInt(PS);
+        }
+        for (int f = 0; f < STATES; f++) { // столиці стоять точно на своєму місці
+            int ci = capitalIndex(f);
+            sx[ci] = EuropeData.tileX(EuropeData.CAPITALS[f][0]);
+            sy[ci] = EuropeData.tileY(EuropeData.CAPITALS[f][1]);
+        }
+        fillVoronoi(sx, sy);
+
+        // ----- місцевість -----
+        int[] cnt = new int[n];
+        int[] wat = new int[n];
+        for (int t = 0; t < TW * TH; t++) {
+            cnt[provOf[t]]++;
+            if (tileWater[t]) wat[provOf[t]]++;
+        }
         Terrain[] terr = new Terrain[n];
         for (int i = 0; i < n; i++) {
-            if (elev[i] <= waterT) terr[i] = Terrain.WATER;
-            else if (elev[i] >= mountT) terr[i] = Terrain.MOUNTAIN;
-            else if (moist[i] >= wetT) terr[i] = Terrain.FOREST;
-            else if (moist[i] <= dryT) terr[i] = Terrain.STEPPE;
-            else terr[i] = elev[i] < medianE ? Terrain.MEADOW : Terrain.PLAINS;
-        }
-        int centerCol = startCol();
-        int centerRow = startRow();
-        for (int i = 0; i < n; i++) {
-            if (dist(i % COLS, i / COLS, centerCol, centerRow) <= 1 && terr[i] == Terrain.WATER) {
-                terr[i] = Terrain.MEADOW;
+            if (wat[i] * 100 > cnt[i] * 55) {
+                terr[i] = Terrain.WATER;
+            } else {
+                int b = EuropeData.biome(EuropeData.lonOf(sx[i]), EuropeData.latOf(sy[i]), grnd.nextDouble());
+                terr[i] = switch (b) {
+                    case 1 -> Terrain.MEADOW;
+                    case 2 -> Terrain.FOREST;
+                    case 3 -> Terrain.MOUNTAIN;
+                    case 4 -> Terrain.STEPPE;
+                    default -> Terrain.PLAINS;
+                };
             }
         }
-
-        // океанські протоки: звивисті шляхи завширшки 2 провінції від краю до краю карти,
-        // що обходять столиці; вони розділяють суходіл на континенти
-        carveChannels(terr, rnd);
-
-        // навколо кожної столиці гарантований суходіл (3x3), щоб держава не опинилась у морі
-        for (Countries.Country c : Countries.ALL) {
-            int cc = scCol(c.col());
-            int cr = scRow(c.row());
-            for (int i = 0; i < n; i++) {
-                if (dist(i % COLS, i / COLS, cc, cr) <= 1 && terr[i] == Terrain.WATER) terr[i] = Terrain.MEADOW;
-            }
-        }
-
-        // ----- річки -----
-        int[] riverNext = new int[n];
-        Arrays.fill(riverNext, -1);
-        boolean[] isRiver = new boolean[n];
-        List<Integer> land = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            if (terr[i] != Terrain.WATER) land.add(i);
-        }
-        land.sort((a, b) -> Double.compare(elev[b], elev[a]));
-        List<Integer> candidates = new ArrayList<>(land.subList(0, Math.max(1, land.size() / 5)));
-        Collections.shuffle(candidates, rnd);
-        int sources = Math.min(22, candidates.size());
-        for (int s = 0; s < sources; s++) {
-            int cur = candidates.get(s);
-            for (int step = 0; step < 110; step++) {
-                isRiver[cur] = true;
-                if (terr[cur] == Terrain.WATER) break;
-                int best = -1;
-                double bestE = elev[cur];
-                for (int j = 0; j < n; j++) {
-                    if (dist(cur % COLS, cur / COLS, j % COLS, j / COLS) == 1 && elev[j] < bestE) {
-                        bestE = elev[j];
-                        best = j;
-                    }
-                }
-                if (best < 0) break;
-                riverNext[cur] = best;
-                cur = best;
-            }
-        }
-
-        // ----- континенти (зв'язні масиви суходолу) -----
-        int[] comp = new int[n];
-        Arrays.fill(comp, -1);
-        int compCount = 0;
-        for (int i = 0; i < n; i++) {
-            if (terr[i] == Terrain.WATER || comp[i] >= 0) continue;
-            java.util.ArrayDeque<Integer> fill = new java.util.ArrayDeque<>();
-            fill.add(i);
-            comp[i] = compCount;
-            while (!fill.isEmpty()) {
-                int cur = fill.poll();
-                for (int dr = -1; dr <= 1; dr++) {
-                    for (int dc = -1; dc <= 1; dc++) {
-                        int nc = cur % COLS + dc;
-                        int nr = cur / COLS + dr;
-                        if (nc < 0 || nr < 0 || nc >= COLS || nr >= ROWS) continue;
-                        int j = nr * COLS + nc;
-                        if (terr[j] != Terrain.WATER && comp[j] < 0) {
-                            comp[j] = compCount;
-                            fill.add(j);
-                        }
-                    }
-                }
-            }
-            compCount++;
-        }
-        int[] capComp = new int[STATES];
         for (int f = 0; f < STATES; f++) {
-            capComp[f] = comp[scRow(Countries.ALL[f].row()) * COLS + scCol(Countries.ALL[f].col())];
+            if (terr[capitalIndex(f)] == Terrain.WATER) terr[capitalIndex(f)] = Terrain.MEADOW;
         }
 
-        // ----- держави -----
-        double[] weight = new double[STATES];
-        for (int f = 0; f < STATES; f++) weight[f] = Countries.ALL[f].weight() + rnd.nextDouble() * 0.15;
+        // ----- держави: найближчий (з вагою) центр впливу -----
+        int[] owners = new int[n];
+        for (int i = 0; i < n; i++) {
+            if (terr[i] == Terrain.WATER) {
+                owners[i] = WATER_OWNER;
+                continue;
+            }
+            double lon = EuropeData.lonOf(sx[i]);
+            double lat = EuropeData.latOf(sy[i]);
+            double best = Double.MAX_VALUE;
+            int own = 1;
+            for (double[] sd : EuropeData.SEEDS) {
+                double d = EuropeData.km(lon, lat, sd[1], sd[2]) / sd[3];
+                if (d < best) {
+                    best = d;
+                    own = (int) sd[0];
+                }
+            }
+            owners[i] = own;
+            if (dist(i % COLS, i / COLS, startCol(), startRow()) <= 1) owners[i] = 0; // стартовий клаптик гравця
+        }
+
+        // ----- назви провінцій за справжніми місцями -----
+        String[] names = nameProvinces(terr, sx, sy);
 
         // ----- провінції -----
         provinces = new Province[n];
@@ -431,45 +282,11 @@ public final class World {
             int col = i % COLS;
             int row = i / COLS;
             Terrain t = terr[i];
-
-            int owner = WATER_OWNER;
-            if (t != Terrain.WATER) {
-                double best = Double.MAX_VALUE;
-                // спершу претенденти з того ж континенту; якщо їх нема — найближча держава (колонія)
-                for (int pass = 0; pass < 2 && owner == WATER_OWNER; pass++) {
-                    for (int f = 1; f < STATES; f++) { // Гетьманщина — лише стартовий клаптик гравця
-                        if (pass == 0 && capComp[f] != comp[i]) continue;
-                        double d = dist(col, row, scCol(Countries.ALL[f].col()), scRow(Countries.ALL[f].row())) * weight[f] + rnd.nextDouble() * 0.9 * NS;
-                        if (d < best) {
-                            best = d;
-                            owner = f;
-                        }
-                    }
-                }
-                if (dist(col, row, centerCol, centerRow) <= 1) owner = 0;
-            }
-
-            String provName;
-            if (t == Terrain.WATER) {
-                int best = 0;
-                int bd = Integer.MAX_VALUE;
-                for (int k = 0; k < SEA_POS.length; k++) {
-                    int dd = dist(col, row, scCol(SEA_POS[k][0]), scRow(SEA_POS[k][1]));
-                    if (dd < bd) {
-                        bd = dd;
-                        best = k;
-                    }
-                }
-                int c = seaCount[best]++;
-                provName = c == 0 ? SEA_NAMES[best] : SEA_NAMES[best] + " " + roman(c + 1);
-            } else {
-                provName = regionQ[owner].next();
-            }
-
-            Province pr = new Province(provName, col, row, owner);
+            int owner = owners[i];
+            Province pr = new Province(names[i], col, row, owner);
             pr.terrain = t;
-            pr.river = isRiver[i];
-            pr.riverNext = riverNext[i];
+            pr.tx = sx[i];
+            pr.ty = sy[i];
 
             if (t == Terrain.WATER) {
                 Point p = new Point("Рибальська затока", PointType.FISHERY, 2, WATER_OWNER);
@@ -495,43 +312,58 @@ public final class World {
                     pr.points.add(p);
                 }
             }
+            pr.explored = true; // туман війни прибрано
             provinces[i] = pr;
         }
-
-        for (Province pr : provinces) {
-            if (pr.owner != 0) continue;
-            for (Province q : provinces) {
-                if (dist(pr.col, pr.row, q.col, q.row) <= 1) q.explored = true;
-            }
-        }
-        // туман війни прибрано: уся карта відкрита
-        for (Province q : provinces) q.explored = true;
         buildTiles();
     }
 
-
-    // ---------- тайлова карта ----------
-
-    private boolean waterTile(int t) {
-        return provinces[provOf[t]].terrain == Terrain.WATER;
+    /** Назва провінції — найближче справжнє місце; повторні отримують римські цифри. */
+    private static String[] nameProvinces(Terrain[] terr, int[] sx, int[] sy) {
+        int n = terr.length;
+        String[] names = new String[n];
+        int P = EuropeData.PLACE_NAMES.length;
+        int S = EuropeData.SEA_NAMES.length;
+        List<List<int[]>> land = new ArrayList<>();
+        List<List<int[]>> sea = new ArrayList<>();
+        for (int k = 0; k < P; k++) land.add(new ArrayList<>());
+        for (int k = 0; k < S; k++) sea.add(new ArrayList<>());
+        for (int i = 0; i < n; i++) {
+            double lon = EuropeData.lonOf(sx[i]);
+            double lat = EuropeData.latOf(sy[i]);
+            boolean water = terr[i] == Terrain.WATER;
+            double[][] pos = water ? EuropeData.SEA_POS : EuropeData.PLACE_POS;
+            int best = 0;
+            double bd = Double.MAX_VALUE;
+            for (int k = 0; k < pos.length; k++) {
+                double d = EuropeData.km(lon, lat, pos[k][0], pos[k][1]);
+                if (d < bd) {
+                    bd = d;
+                    best = k;
+                }
+            }
+            (water ? sea : land).get(best).add(new int[] {i, (int) bd});
+        }
+        for (int pass = 0; pass < 2; pass++) {
+            List<List<int[]>> groups = pass == 0 ? land : sea;
+            String[] labels = pass == 0 ? EuropeData.PLACE_NAMES : EuropeData.SEA_NAMES;
+            for (int k = 0; k < groups.size(); k++) {
+                List<int[]> g = groups.get(k);
+                g.sort((a, b) -> Integer.compare(a[1], b[1]));
+                for (int j = 0; j < g.size(); j++) {
+                    names[g.get(j)[0]] = j == 0 ? labels[k] : labels[k] + " " + roman(j + 1);
+                }
+            }
+        }
+        return names;
     }
 
-    private void buildTiles() {
-        final int T = TILES;
-        Random rnd = new Random(seed * 31L + 7L);
-        int n = provinces.length;
-
-        // насіння провінцій
-        for (Province pr : provinces) {
-            pr.tx = pr.col * PS + rnd.nextInt(PS);
-            pr.ty = pr.row * PS + rnd.nextInt(PS);
-        }
-
-        // Вороной з викривленням країв: кожен тайл належить найближчому насінню
-        for (int y = 0; y < T; y++) {
-            for (int x = 0; x < T; x++) {
-                double wx = x + 0.5 + (vnoise(seed, 11, x / 5.0, y / 5.0) - 0.5) * 3.0;
-                double wy = y + 0.5 + (vnoise(seed, 12, x / 5.0, y / 5.0) - 0.5) * 3.0;
+    /** Кожен тайл належить найближчому насінню провінції (краї викривлені шумом). */
+    private void fillVoronoi(int[] sx, int[] sy) {
+        for (int y = 0; y < TH; y++) {
+            for (int x = 0; x < TW; x++) {
+                double wx = x + 0.5 + (vnoise(4242L, 11, x / 5.0, y / 5.0) - 0.5) * 3.0;
+                double wy = y + 0.5 + (vnoise(4242L, 12, x / 5.0, y / 5.0) - 0.5) * 3.0;
                 int cx = Math.max(0, Math.min(COLS - 1, (int) (wx / PS)));
                 int cy = Math.max(0, Math.min(ROWS - 1, (int) (wy / PS)));
                 int best = cy * COLS + cx;
@@ -541,53 +373,94 @@ public final class World {
                         int ccx = cx + dx;
                         int ccy = cy + dy;
                         if (ccx < 0 || ccy < 0 || ccx >= COLS || ccy >= ROWS) continue;
-                        Province q = provinces[ccy * COLS + ccx];
-                        double ex = wx - (q.tx + 0.5);
-                        double ey = wy - (q.ty + 0.5);
+                        int q = ccy * COLS + ccx;
+                        double ex = wx - (sx[q] + 0.5);
+                        double ey = wy - (sy[q] + 0.5);
                         double d = ex * ex + ey * ey;
                         if (d < bd) {
                             bd = d;
-                            best = ccy * COLS + ccx;
+                            best = q;
                         }
                     }
                 }
-                provOf[y * T + x] = (short) best;
+                provOf[y * TW + x] = (short) best;
+            }
+        }
+    }
+
+    // ---------- тайлова карта ----------
+
+    private boolean waterTile(int t) {
+        return tileWater[t];
+    }
+
+    private void buildTiles() {
+        final int T = TW;
+        Random rnd = new Random(seed * 31L + 7L);
+        int n = provinces.length;
+
+        // суходіл, що потрапив у «водну» провінцію (береги), відходить до найближчої сухопутної провінції
+        java.util.ArrayDeque<Integer> fix = new java.util.ArrayDeque<>();
+        for (int t = 0; t < T * TH; t++) {
+            if (!tileWater[t] && provinces[provOf[t]].terrain != Terrain.WATER) fix.add(t);
+        }
+        int[] fdx = {1, -1, 0, 0};
+        int[] fdy = {0, 0, 1, -1};
+        while (!fix.isEmpty()) {
+            int t = fix.poll();
+            for (int d = 0; d < 4; d++) {
+                int nx = t % T + fdx[d];
+                int ny = t / T + fdy[d];
+                if (nx < 0 || ny < 0 || nx >= T || ny >= TH) continue;
+                int nt = ny * T + nx;
+                if (!tileWater[nt] && provinces[provOf[nt]].terrain == Terrain.WATER) {
+                    provOf[nt] = provOf[t];
+                    fix.add(nt);
+                }
             }
         }
 
         // основа і накладки за типом місцевості провінції
-        for (int t = 0; t < T * T; t++) {
+        for (int t = 0; t < T * TH; t++) {
             Terrain ter = provinces[provOf[t]].terrain;
+            if (tileWater[t]) ter = Terrain.WATER;
+            else if (ter == Terrain.WATER) ter = Terrain.PLAINS;
             int b;
             int o = 0;
             int r = rnd.nextInt(100);
             switch (ter) {
                 case WATER -> b = TileAtlas.WATER_DEEP;
                 case PLAINS -> {
-                    b = r < 45 ? TileAtlas.TEXGRASS + rnd.nextInt(3) : TileAtlas.GRASS_L;
-                    if (r > 94) o = TileAtlas.TREE1 + rnd.nextInt(3);
-                    else if (r > 91) o = TileAtlas.BUSH1 + rnd.nextInt(2);
-                    else if (r > 76 && r <= 80) o = TileAtlas.FLOWER1 + rnd.nextInt(4);
-                    else if (r > 84) o = TileAtlas.WHEAT1 + rnd.nextInt(3);
-                }
-                case MEADOW -> {
-                    b = r < 50 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
-                    if (r > 92) o = TileAtlas.TREE1 + rnd.nextInt(3);
+                    b = r < 55 ? TileAtlas.TEXGRASS + rnd.nextInt(3) : TileAtlas.GRASS_L;
+                    if (r > 95) o = TileAtlas.TREE1 + rnd.nextInt(3);
+                    else if (r > 92) o = TileAtlas.BUSH1 + rnd.nextInt(2);
+                    else if (r > 87) o = TileAtlas.FLOWER1 + rnd.nextInt(4);
                     else if (r > 82) o = TileAtlas.WHEAT1 + rnd.nextInt(3);
                 }
+                case MEADOW -> {
+                    b = r < 60 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
+                    if (r > 90) o = TileAtlas.TREE1 + rnd.nextInt(3);
+                    else if (r > 84) o = TileAtlas.FLOWER1 + rnd.nextInt(4);
+                    else if (r > 76) o = TileAtlas.WHEAT1 + rnd.nextInt(3);
+                    else if (r > 72) o = TileAtlas.BUSH1 + rnd.nextInt(2);
+                }
                 case FOREST -> {
-                    b = r < 40 ? TileAtlas.TEXGRASS + 3 + rnd.nextInt(3) : TileAtlas.GRASS_D;
+                    // густий ліс суцільними тайлами, як на еталонних картах
+                    b = TileAtlas.GRASS_D;
                     int q = rnd.nextInt(100);
-                    if (q < 62) o = q < 20 ? TileAtlas.PINE : TileAtlas.TREE1 + rnd.nextInt(3);
+                    if (q < 55) o = TileAtlas.FOREST1 + rnd.nextInt(3);
+                    else if (q < 75) o = TileAtlas.TREE1 + rnd.nextInt(3);
+                    else if (q < 92) o = q < 84 ? TileAtlas.PINE : TileAtlas.PINEF1 + rnd.nextInt(3);
                 }
                 case MOUNTAIN -> {
                     b = TileAtlas.GRASS_D;
-                    if (r < 45) o = TileAtlas.ROCK1 + rnd.nextInt(3);
+                    o = r < 80 ? TileAtlas.MOUNT1 + rnd.nextInt(4) : TileAtlas.ROCK1 + rnd.nextInt(3);
                 }
-                default -> { // STEPPE
-                    b = TileAtlas.DEADGRASS + rnd.nextInt(6);
-                    if (r > 93) o = rnd.nextBoolean() ? (rnd.nextBoolean() ? TileAtlas.CACTUS1 : TileAtlas.CACTUS2) : TileAtlas.BUSH1 + rnd.nextInt(2);
-                    else if (r > 88) o = TileAtlas.DEADTREE1 + rnd.nextInt(2);
+                default -> { // STEPPE: світла трава з плямами землі та сіном
+                    b = r < 18 ? TileAtlas.DEADGRASS + rnd.nextInt(6) : r < 70 ? TileAtlas.TEXGRASS + rnd.nextInt(3) : TileAtlas.GRASS_L;
+                    if (r > 95) o = TileAtlas.ROCK1 + rnd.nextInt(3);
+                    else if (r > 80) o = TileAtlas.WHEAT3;
+                    else if (r > 75) o = TileAtlas.BUSH1 + rnd.nextInt(2);
                 }
             }
             base[t] = (byte) b;
@@ -603,7 +476,7 @@ public final class World {
                 if (nc >= COLS || nr >= ROWS) continue;
                 Province q = provinces[nr * COLS + nc];
                 if (q.terrain == Terrain.WATER || q.owner != pr.owner) continue;
-                if (rnd.nextInt(100) < 55) continue;
+                if (rnd.nextInt(100) < 75) continue;
                 line(pr.tx, pr.ty, q.tx, q.ty, (x, y) -> {
                     int t = y * T + x;
                     if (!waterTile(t)) {
@@ -615,10 +488,10 @@ public final class World {
         }
 
         // берегова лінія: відстань води до суходолу
-        int[] wd = new int[T * T];
+        int[] wd = new int[T * TH];
         java.util.Arrays.fill(wd, -1);
         java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
-        for (int t = 0; t < T * T; t++) {
+        for (int t = 0; t < T * TH; t++) {
             if (!waterTile(t)) {
                 wd[t] = 0;
                 queue.add(t);
@@ -633,14 +506,14 @@ public final class World {
             for (int d = 0; d < 4; d++) {
                 int nx = x + dx4[d];
                 int ny = y + dy4[d];
-                if (nx < 0 || ny < 0 || nx >= T || ny >= T) continue;
+                if (nx < 0 || ny < 0 || nx >= T || ny >= TH) continue;
                 int nt = ny * T + nx;
                 if (wd[nt] != -1) continue;
                 wd[nt] = wd[t] + 1;
                 queue.add(nt);
             }
         }
-        for (int t = 0; t < T * T; t++) {
+        for (int t = 0; t < T * TH; t++) {
             if (waterTile(t)) {
                 int d = wd[t];
                 base[t] = (byte) (d == 1 ? TileAtlas.SHORE1 : d == 2 ? TileAtlas.SHORE2
@@ -652,7 +525,7 @@ public final class World {
                 for (int d = 0; d < 4; d++) {
                     int nx = x + dx4[d];
                     int ny = y + dy4[d];
-                    if (nx < 0 || ny < 0 || nx >= T || ny >= T) continue;
+                    if (nx < 0 || ny < 0 || nx >= T || ny >= TH) continue;
                     if (waterTile(ny * T + nx)) coast = true;
                 }
                 if (coast) {
@@ -662,23 +535,33 @@ public final class World {
             }
         }
 
-        // річки між насінням провінцій
-        for (Province pr : provinces) {
-            if (pr.riverNext < 0 || pr.terrain == Terrain.WATER) continue;
-            Province nx = provinces[pr.riverNext];
-            line(pr.tx, pr.ty, nx.tx, nx.ty, (x, y) -> {
-                int t = y * T + x;
-                if (!waterTile(t)) {
-                    base[t] = (byte) TileAtlas.WATER_SHALLOW;
-                    over[t] = 0;
-                }
-            });
+        // річки за справжніми руслами (Дніпро, Дунай, Рейн, Вісла, Волга, Дон тощо)
+        for (double[] rv : EuropeData.RIVERS) {
+            final int width = (int) rv[0];
+            for (int k = 1; k + 3 < rv.length; k += 2) {
+                int x0 = EuropeData.tileX(rv[k]);
+                int y0 = EuropeData.tileY(rv[k + 1]);
+                int x1 = EuropeData.tileX(rv[k + 2]);
+                int y1 = EuropeData.tileY(rv[k + 3]);
+                line(x0, y0, x1, y1, (x, y) -> {
+                    for (int w = 0; w < width; w++) {
+                        int xx = x + (w == 1 ? 1 : 0);
+                        int yy = y + (w == 1 ? 1 : 0);
+                        if (xx >= TW || yy >= TH) continue;
+                        int t = yy * TW + xx;
+                        if (!waterTile(t)) {
+                            base[t] = (byte) TileAtlas.WATER_SHALLOW;
+                            over[t] = 0;
+                        }
+                    }
+                });
+            }
         }
 
         // позиції точок (будівель) у межах провінції
         List<List<Integer>> tilesOf = new ArrayList<>();
         for (int i = 0; i < n; i++) tilesOf.add(new ArrayList<>());
-        for (int t = 0; t < T * T; t++) tilesOf.get(provOf[t]).add(t);
+        for (int t = 0; t < T * TH; t++) tilesOf.get(provOf[t]).add(t);
         for (int i = 0; i < n; i++) {
             Province pr = provinces[i];
             List<Integer> cand = new ArrayList<>();
@@ -699,7 +582,7 @@ public final class World {
                 over[t] = 0;
                 if (pr.terrain != Terrain.WATER) {
                     // стежка від будівлі до центру провінції (до міст завжди, до решти не завжди)
-                    if (p.type == PointType.TOWN || rnd.nextInt(100) < 35) line(p.px, p.py, sxx, syy, (x, y) -> {
+                    if ((p.type == PointType.TOWN && rnd.nextInt(100) < 60) || rnd.nextInt(100) < 10) line(p.px, p.py, sxx, syy, (x, y) -> {
                         int q = y * T + x;
                         if (!waterTile(q) && base[q] > TileAtlas.SHORE1) {
                             base[q] = (byte) TileAtlas.PATH;
@@ -712,7 +595,7 @@ public final class World {
                             for (int fx = -2; fx <= 2; fx++) {
                                 int ax = p.px + fx;
                                 int ay = p.py + fy;
-                                if (ax < 0 || ay < 0 || ax >= T || ay >= T || (fx == 0 && fy == 0)) continue;
+                                if (ax < 0 || ay < 0 || ax >= T || ay >= TH || (fx == 0 && fy == 0)) continue;
                                 int q = ay * T + ax;
                                 if (provOf[q] != i || waterTile(q) || base[q] <= TileAtlas.SAND || base[q] == TileAtlas.PATH) continue;
                                 if (rnd.nextInt(100) < 38) over[q] = (byte) (TileAtlas.WHEAT1 + rnd.nextInt(3));
@@ -737,7 +620,7 @@ public final class World {
         int x = x0;
         int y = y0;
         while (true) {
-            if (x >= 0 && y >= 0 && x < TILES && y < TILES) plot.plot(x, y);
+            if (x >= 0 && y >= 0 && x < TW && y < TH) plot.plot(x, y);
             if (x == x1 && y == y1) break;
             int e2 = 2 * err;
             if (e2 > -dy) {

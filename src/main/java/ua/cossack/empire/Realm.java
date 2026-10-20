@@ -102,8 +102,8 @@ public final class Realm {
     /** Чи можна поставити будівлю b на тайл провінції pr (суша, вільне місце, порт — біля води). */
     public static boolean canPlace(World.Province pr, Building b, int tile) {
         World w = GameState.world;
-        final int T = World.TILES;
-        if (tile < 0 || tile >= T * T || w.provOf[tile] != indexOf(pr)) return false;
+        final int T = World.TW;
+        if (tile < 0 || tile >= T * World.TH || w.provOf[tile] != indexOf(pr)) return false;
         if (w.base[tile] <= TileAtlas.SHORE1) return false; // вода чи річка
         for (World.Point p : pr.points) {
             if (p.py * T + p.px == tile) return false;
@@ -119,7 +119,7 @@ public final class Realm {
             for (int d = 0; d < 4; d++) {
                 int nx = x + dx[d];
                 int ny = y + dy[d];
-                if (nx >= 0 && ny >= 0 && nx < T && ny < T && w.base[ny * T + nx] <= TileAtlas.SHORE1) return true;
+                if (nx >= 0 && ny >= 0 && nx < T && ny < World.TH && w.base[ny * T + nx] <= TileAtlas.SHORE1) return true;
             }
             return false;
         }
@@ -142,10 +142,10 @@ public final class Realm {
     public static void build(World.Province pr, Building b) {
         if (!canBuild(pr, b)) return;
         World w = GameState.world;
-        final int T = World.TILES;
+        final int T = World.TW;
         int best = -1;
         int bestD = Integer.MAX_VALUE;
-        for (int t = 0; t < T * T; t++) {
+        for (int t = 0; t < T * World.TH; t++) {
             if (w.provOf[t] != indexOf(pr) || !canPlace(pr, b, t)) continue;
             int d = Math.abs(t % T - pr.tx) + Math.abs(t / T - pr.ty);
             if (d < bestD) {
